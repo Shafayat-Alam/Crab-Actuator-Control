@@ -21,6 +21,8 @@ from std_msgs.msg import Float32MultiArray
 
 from dynamixel_sdk import *
 
+import time
+
 # Serial Communication
 PROTOCOL_VERSION = 2.0
 BAUDRATE = 57600
@@ -72,6 +74,7 @@ class ServoCommandNode(Node):
         
         self.get_logger().info(f"Connected to servo ID {self.servo_id}")
         
+        time.sleep(0.5)
         # Enable torque so servo can move
         if not self.enable_torque():
             self.get_logger().error("Failed to enable servo torque")
