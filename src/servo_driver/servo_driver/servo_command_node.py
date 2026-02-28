@@ -9,7 +9,7 @@ from dynamixel_sdk import *
 # DynamixelSDK constants
 PROTOCOL_VERSION = 2.0
 BAUDRATE = 57600
-DEVICENAME = '/dev/ttyUSB0'
+DEVICENAME = 'COM8' ## Would depend on Jetsen Nano port configuarition. Needs to be changed later. 
 
 # Register addresses
 ADDR_CONTROL_MODE = 11
