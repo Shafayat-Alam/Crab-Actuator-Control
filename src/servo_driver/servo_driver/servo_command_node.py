@@ -74,14 +74,6 @@ class ServoCommandNode(Node):
         
         self.get_logger().info(f"Connected to servo ID {self.servo_id}")
         
-        time.sleep(0.5)
-        # Enable torque so servo can move
-        if not self.enable_torque():
-            self.get_logger().error("Failed to enable servo torque")
-            return
-        
-        self.get_logger().info(f"Torque enabled for servo ID {self.servo_id}")
-        
         # Create subscriber for commands
         self.subscription = self.create_subscription(
             Float32MultiArray,
@@ -155,6 +147,12 @@ class ServoCommandNode(Node):
         if dxl_comm_result != COMM_SUCCESS:
             self.get_logger().error(f"Failed to set control mode: {dxl_comm_result}")
             return
+
+        if not self.enable_torque():
+            self.get_logger().error("Failed to enable torque")
+            return
+
+        self.get_logger().info(f"Torque enabled for servo ID {self.servo_id}")
         
         # Set goal value based on mode
         if control_mode == MODE_POSITION:
