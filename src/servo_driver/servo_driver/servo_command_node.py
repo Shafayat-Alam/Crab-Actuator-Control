@@ -125,6 +125,7 @@ class ServoCommandNode(Node):
         
         Args:
             msg (Float32MultiArray): Command message from /servo/command topic
+            
         """
         # Validate message format
         if len(msg.data) < 2:
