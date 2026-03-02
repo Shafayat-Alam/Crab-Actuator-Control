@@ -27,7 +27,7 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': [ 
+        'console_scripts': [
             'servo_command_node=servo_driver.servo_command_node:main',
         ],
     },

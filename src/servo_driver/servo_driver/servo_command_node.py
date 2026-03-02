@@ -8,7 +8,7 @@ Features:
 - Subscribes to /servo/command (mode, value)
 - Publishes to /servo/status (position, velocity, current)
 - Supports three control modes: position, velocity, torque
-- Automatically enables torque on startup
+- Logs all commands and feedback to CSV file
 - Returns servo feedback after each command
 
 Usage:
@@ -22,6 +22,9 @@ from std_msgs.msg import Float32MultiArray
 from dynamixel_sdk import *
 
 import time
+import csv
+import os
+from datetime import datetime
 
 # Serial Communication
 PROTOCOL_VERSION = 2.0
@@ -58,6 +61,15 @@ class ServoCommandNode(Node):
         self.declare_parameter('servo_id', 1)
         self.servo_id = self.get_parameter('servo_id').value
         
+        # Initialize logging
+        self._init_logging()
+        
+        # Store latest command for pairing with feedback
+        self.latest_command = {
+            'control_mode': None,
+            'goal_value': None
+        }
+        
         # Initialize DynamixelSDK
         self.port_handler = PortHandler(DEVICENAME)
         self.packet_handler = PacketHandler(PROTOCOL_VERSION)
@@ -91,12 +103,61 @@ class ServoCommandNode(Node):
         
         self.get_logger().info("Servo command node initialized and ready")
     
+    def _init_logging(self):
+        """Initialize CSV logging file in current directory."""
+        # Create log file in current directory (overwrite each run)
+        self.log_file = f'servo_log_{self.servo_id}.csv'
+        
+        try:
+            # Get absolute path for debugging
+            abs_path = os.path.abspath(self.log_file)
+            
+            # Write header
+            with open(self.log_file, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    'timestamp',
+                    'control_mode',
+                    'goal_value',
+                    'present_position',
+                    'present_velocity',
+                    'present_current'
+                ])
+            
+            self.get_logger().info(f"Logging initialized at: {abs_path}")
+        except Exception as e:
+            self.get_logger().error(f"Failed to initialize logging: {e}")
+            self.log_file = None
+    
+    def _log_feedback(self, control_mode, goal_value, position, velocity, current):
+        """Write feedback data to CSV file."""
+        if self.log_file is None:
+            return
+        
+        try:
+            timestamp = datetime.now().isoformat()
+            
+            with open(self.log_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    timestamp,
+                    control_mode,
+                    goal_value,
+                    int(position),
+                    int(velocity),
+                    int(current)
+                ])
+            
+            self.get_logger().debug(f"Logged: mode={control_mode}, value={goal_value}, pos={int(position)}")
+        except Exception as e:
+            self.get_logger().error(f"Failed to write log: {e}")
+    
     def enable_torque(self):
         """
         Enable servo torque.
         
         Servo must have torque enabled before it can move.
-        Called once during initialization.
+        Called after setting control mode.
         
         Returns:
             bool: True if successful, False otherwise
@@ -125,7 +186,6 @@ class ServoCommandNode(Node):
         
         Args:
             msg (Float32MultiArray): Command message from /servo/command topic
-            
         """
         # Validate message format
         if len(msg.data) < 2:
@@ -134,6 +194,10 @@ class ServoCommandNode(Node):
         
         control_mode = int(msg.data[0])
         goal_value = int(msg.data[1])
+        
+        # Store command for logging
+        self.latest_command['control_mode'] = control_mode
+        self.latest_command['goal_value'] = goal_value
         
         self.get_logger().info(f"Received command: mode={control_mode}, value={goal_value}")
         
@@ -197,6 +261,7 @@ class ServoCommandNode(Node):
     def publish_feedback(self):
         """
         Read servo state and publish to /servo/status.
+        Also logs data to CSV file.
         
         Publishes: [present_position, present_velocity, present_current]
         """
@@ -219,6 +284,15 @@ class ServoCommandNode(Node):
             self.port_handler,
             self.servo_id,
             ADDR_PRESENT_CURRENT
+        )
+        
+        # Log feedback to CSV
+        self._log_feedback(
+            self.latest_command['control_mode'],
+            self.latest_command['goal_value'],
+            position,
+            velocity,
+            current
         )
         
         # Create and publish feedback message
