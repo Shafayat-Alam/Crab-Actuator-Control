@@ -44,6 +44,7 @@ class ActuatorNode(Node):
 
         self.get_logger().info("Actuator Node Online. (Pure Hardware Driver)")
 
+    """
     def hw_cb(self, msg):
         """Processes incoming joint commands and updates hardware."""
         if not rclpy.ok(): return
@@ -62,9 +63,48 @@ class ActuatorNode(Node):
 
             addr = self.ADDR_GOAL_POS if mode == 3 else self.ADDR_GOAL_VEL
             self.packet_handler.write4ByteTxRx(self.port, sid, addr, int(goal))
+    """
 
+    def hw_cb(self, msg):
+        if not rclpy.ok(): return
+
+        n = len(msg.data) // 3
+        ids = [int(x) for x in msg.data[0:n]]
+        modes = [int(x) for x in msg.data[n:2*n]]
+        goals = [float(x) for x in msg.data[2*n:3*n]]
+
+        # Prepare the feedback message
+        feedback_msg = Float32MultiArray()
+        current_positions = []
+
+        for i in range(n):
+            sid, mode, goal = ids[i], modes[i], goals[i]
+
+            # 1. Update Mode/Torque (Only if you need to switch modes mid-flight)
+            self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 0)
+            self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_MODE, mode)
+            self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 1)
+
+            # 2. Write the Command
+            addr = self.ADDR_GOAL_POS if mode == 3 else self.ADDR_GOAL_VEL
+            self.packet_handler.write4ByteTxRx(self.port, sid, addr, int(goal))
+
+            # 3.READ 
+            # We read the position right after the write command finishes
+            raw_pos, res, err = self.packet_handler.read4ByteTxRx(self.port, sid, self.ADDR_PRESENT_POS)
+            
+            if res == 0: # COMM_SUCCESS
+                current_positions.append(float(raw_pos))
+            else:
+                current_positions.append(-1.0) # Error marker
+
+            # 4. Publish the feedback immediately
+            feedback_msg.data = current_positions
+            self.feedback_pub.publish(feedback_msg)
+    
+    """
     def publish_feedback(self):
-        """Reads hardware and sends it over ROS topic."""
+        
         msg = Float32MultiArray()
         positions = []
         
@@ -81,6 +121,7 @@ class ActuatorNode(Node):
     def destroy_node(self):
         self.get_logger().info("Shutting down Actuator Node.")
         super().destroy_node()
+    """
 
 def main(args=None):
     rclpy.init(args=args)
