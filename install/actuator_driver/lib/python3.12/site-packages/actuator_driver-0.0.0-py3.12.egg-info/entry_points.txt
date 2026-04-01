@@ -1,0 +1,4 @@
+[console_scripts]
+actuator = actuator_driver.actuator:main
+crab = actuator_driver.crab:main
+crab_controller = actuator_driver.crab_controller:main

@@ -1,2 +1,0 @@
-int32 control_mode
-int32 goal_value
