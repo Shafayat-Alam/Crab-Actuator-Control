@@ -50,67 +50,6 @@ class ActuatorNode(Node):
 
         self.get_logger().info("Actuator Node Online. (Pure Hardware Driver)")
     
-    """
-    def hw_cb(self, msg):
-        if not rclpy.ok(): return
-
-        TICKS_PER_RAD = 4096.0 / (2.0 * 3.14159265)
-
-        n = len(msg.data) // 3
-        ids = [int(x) for x in msg.data[0:n]]
-        modes = [int(x) for x in msg.data[n:2*n]]
-        goals = [float(x) for x in msg.data[2*n:3*n]]
-
-        # 1. Initialize SyncWrite Handlers
-        pos_sync = GroupSyncWrite(self.port, self.packet_handler, self.ADDR_GOAL_POS, 4)
-        vel_sync = GroupSyncWrite(self.port, self.packet_handler, self.ADDR_GOAL_VEL, 4)
-
-        # --- LOOP 1: PACK DATA ONLY ---
-        for i in range(n):
-            sid, mode, goal = ids[i], modes[i], goals[i]
-
-            if mode == 3:
-                tick_goal = int(goal * TICKS_PER_RAD)
-                final_val = max(0, min(4095, tick_goal))
-            else:
-                final_val = int(goal)
-
-            val = [
-                DXL_LOBYTE(DXL_LOWORD(final_val)),
-                DXL_HIBYTE(DXL_LOWORD(final_val)),
-                DXL_LOBYTE(DXL_HIWORD(final_val)),
-                DXL_HIBYTE(DXL_HIWORD(final_val))
-            ]
-            
-            if mode == 3:
-                pos_sync.addParam(sid, val)
-            else:
-                vel_sync.addParam(sid, val)
-
-        # --- 2. TRANSMIT ONCE ---
-        pos_sync.txPacket()
-        vel_sync.txPacket()
-
-        # --- 3. CLEANUP ---
-        pos_sync.clearParam()
-        vel_sync.clearParam()
-
-        # --- 4. READ FEEDBACK ---
-        feedback_msg = Float32MultiArray()
-        current_positions = []
-        for sid in ids:
-            raw_pos, res, err = self.packet_handler.read4ByteTxRx(self.port, sid, self.ADDR_PRESENT_POS)
-            
-            if res == 0:
-                rad_pos = float(raw_pos) / TICKS_PER_RAD
-                current_positions.append(rad_pos)
-            else:
-                current_positions.append(-1.0) 
-        
-        feedback_msg.data = current_positions
-        self.feedback_pub.publish(feedback_msg)
-    """
-    
     def hw_cb(self, msg):
         if not rclpy.ok(): return
 
