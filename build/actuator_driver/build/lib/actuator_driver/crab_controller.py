@@ -1,135 +1,74 @@
-"""
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray
-import csv
-import time
-
-class CrabController(Node):
-    def __init__(self):
-        super().__init__('crab_motion_engine')
-        
-        # --- ROS Communication ---
-        self.joint_pub = self.create_publisher(Float32MultiArray, 'joint_cmd', 10)
-        self.motion_sub = self.create_subscription(Float32MultiArray, 'motion_cmd', self.motion_cb, 10)
-        self.feedback_sub = self.create_subscription(Float32MultiArray, 'joint_feedback', self.feedback_cb, 10)
-
-        self.get_logger().info("Controller Online.")
-
-        # --- Constants & State ---
-        self.active_ids = [1.0, 2.0, 3.0, 4.0]
-        self.current_feedback = [0.0] * 4
-        self.current_mode = 3.0
-    
-    def destroy_node(self):
-        self.csv_file.close()
-        super().destroy_node()
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = CrabController()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()
-"""
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, String
-import csv
 import time
 import math
 
 class CrabController(Node):
     def __init__(self):
         super().__init__('crab_motion_engine')
-        """
+        
         # --- Actuator Mapping ---
-        # Left: 1 (Roll), 2 (Pitch) | Right: 3 (Roll), 4 (Pitch)
         self.actuators = {
             "left":  {"roll": 1.0, "pitch": 2.0},
             "right": {"roll": 3.0, "pitch": 4.0}
         }
         self.all_ids = [1.0, 2.0, 3.0, 4.0]
-        """
+
+        # --- Physical Calibration Offsets (From your image) ---
+        self.OFFSETS = {
+            1.0: 3.65, # servo1
+            2.0: 3.3,  # servo2
+            3.0: 2.95, # servo3
+            4.0: 1.86  # servo4
+        }
+
         # --- ROS & Logging ---
         self.joint_pub = self.create_publisher(Float32MultiArray, 'joint_cmd', 10)
-        time.sleep(1.0)
-        self.torque_enable()
-        ##self.motion_sub = self.create_subscription(String, 'motion_cmd', self.motion_cb, 10)
-        ##self.feedback_sub = self.create_subscription(Float32MultiArray, 'joint_feedback', self.feedback_cb, 10)
         
-        """
-        self.csv_file = open(f"crab_log_{int(time.time())}.csv", mode='w', newline='')
-        self.csv_writer = csv.writer(self.csv_file)
-        self.csv_writer.writerow(['ts', 'cmd_idx', 'id', 'mode', 'goal', 'actual'])
-        """
-        """
+        # 1. Torque Lock on Startup
+        self.get_logger().info("Waiting for hardware discovery...")
+        time.sleep(1.5)
+        self.torque_enable()
+
+        # 2. Subscriptions
+        self.motion_sub = self.create_subscription(String, 'motion_cmd', self.motion_cb, 10)
+        
         # --- State & Failsafes ---
         self.command_count = 0
-        self.LIMITS = {"min": -1.57, "max": 1.57} # Radian limits
+        # Limits expanded to allow for the hardware offsets (approx 1.57 rad swing around offset)
+        self.LIMITS = {"min": 0.0, "max": 5.2} 
+        
         self.current_goals = {id: 0.0 for id in self.all_ids}
         self.current_modes = {id: 3.0 for id in self.all_ids}
         
         self.active_motions = {} # Side -> Params
         self.timer = self.create_timer(0.05, self.update_motion_loop) # 20Hz Heartbeat
-        """
+
     # =========================================================================
     # MOTION LIBRARY
     # =========================================================================
 
-    """
-    def forward_flap(self, t, freq, amp):
-        
-        val = amp * math.sin(2 * math.pi * freq * t)
-        return {"roll": val, "pitch": 0.0}
-
-    def backward_flap(self, t, freq, amp):
-        
-        val = amp * math.sin(2 * math.pi * freq * t)
-        return {"roll": -val, "pitch": 0.0}
-
-    def forward_gait(self, t, freq, amp):
-
-        
-        roll_val = amp * math.sin(2 * math.pi * freq * t)
-        pitch_val = amp * math.cos(2 * math.pi * freq * t)
-        return {"roll": roll_val, "pitch": pitch_val}
-
     def calibration(self, t, freq, amp):
-        
+        """Zero out the actuator relative to the physical offsets."""
         return {"roll": 0.0, "pitch": 0.0}
-    """
 
     # =========================================================================
     # SYSTEM LOGIC
     # =========================================================================
 
     def torque_enable(self):
-        """Sends a command to lock motors 1-4 without moving them from their current spot."""
         msg = Float32MultiArray()
-        
-        # Structure: [IDs 1-4] + [Modes -1] + [Goals 0]
-        # The Actuator Node sees the -1.0 and ignores the 0.0 goals.
+        # Note: Torque enable ignores goals, so we don't need offsets here
         msg.data = [
             1.0, 2.0, 3.0, 4.0,    # IDs
             -1.0, -1.0, -1.0, -1.0, # Torque-Only Flags
             0.0, 0.0, 0.0, 0.0      # Dummy Goals
         ]
-        
         self.joint_pub.publish(msg)
-        self.get_logger().info("Torque Enable (-1 flag) sent to Actuator.")
+        self.get_logger().info("Startup: Torque Locked.")
 
-    """
     def motion_cb(self, msg):
-        
         try:
             self.command_count += 1
             parts = msg.data.lower().replace(' ', '').split(']')
@@ -145,6 +84,7 @@ class CrabController(Node):
                     "start_t": time.time()
                 }
             self.active_motions = new_motions
+            self.get_logger().info(f"New Motion Loaded: {data['motions']}")
         except Exception as e:
             self.get_logger().error(f"Command Error: {e}")
 
@@ -157,12 +97,10 @@ class CrabController(Node):
         for side, p in self.active_motions.items():
             t = time.time() - p["start_t"]
             
-            # MODULE DYNAMICS: This looks for the function by name string
             if hasattr(self, p["func"]):
                 motion_func = getattr(self, p["func"])
-                result = motion_func(t, p["freq"], p["amp"]) # Calls the specific motion
+                result = motion_func(t, p["freq"], p["amp"])
                 
-                # Map results to specific Servo IDs
                 goals[self.actuators[side]["roll"]] = result["roll"]
                 goals[self.actuators[side]["pitch"]] = result["pitch"]
                 modes[self.actuators[side]["roll"]] = p["mode"]
@@ -173,21 +111,23 @@ class CrabController(Node):
     def send_to_actuator(self, goals, modes):
         msg = Float32MultiArray()
         ids = sorted(goals.keys())
-        safe_goals = [max(self.LIMITS["min"], min(self.LIMITS["max"], goals[idx])) for idx in ids]
-        msg.data = ids + [modes[idx] for idx in ids] + safe_goals
+        
+        # APPLY OFFSETS HERE: Physical Pos = Goal + Calibration Offset
+        final_goals = []
+        for idx in ids:
+            # Shift the logical goal (0.0) to the physical offset (3.65, etc)
+            physical_pos = goals[idx] + self.OFFSETS.get(idx, 0.0)
+            # Apply safety limits
+            safe_pos = max(self.LIMITS["min"], min(self.LIMITS["max"], physical_pos))
+            final_goals.append(safe_pos)
+        
+        # Order: [IDs] + [Modes] + [Goals]
+        msg.data = [float(idx) for idx in ids] + [modes[idx] for idx in ids] + final_goals
         self.joint_pub.publish(msg)
         self.current_goals = goals
-
-    def feedback_cb(self, msg):
-        ts = time.time()
-        for i, val in enumerate(msg.data):
-            sid = self.all_ids[i]
-            self.csv_writer.writerow([ts, self.command_count, sid, self.current_modes[sid], self.current_goals[sid], val])
-        self.csv_file.flush()
-    """
+        self.current_modes = modes
 
     def destroy_node(self):
-        self.csv_file.close()
         super().destroy_node()
 
 def main(args=None):
@@ -198,8 +138,8 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
+        node.destroy_node()
         if rclpy.ok():
-            node.destroy_node()
             rclpy.shutdown()
 
 if __name__ == '__main__':
