@@ -1,0 +1,26 @@
+[1.117s] Invoking command in '/home/shafa/flapping-propulsors-control/src/actuator_driver': PYTHONPATH=/home/shafa/flapping-propulsors-control/build/actuator_driver/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/shafa/flapping-propulsors-control/install/actuator_driver/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/actuator_driver build --build-base /home/shafa/flapping-propulsors-control/build/actuator_driver/build install --record /home/shafa/flapping-propulsors-control/build/actuator_driver/install.log --single-version-externally-managed install_data
+[1.376s] running egg_info
+[1.395s] writing ../../build/actuator_driver/actuator_driver.egg-info/PKG-INFO
+[1.395s] writing dependency_links to ../../build/actuator_driver/actuator_driver.egg-info/dependency_links.txt
+[1.395s] writing entry points to ../../build/actuator_driver/actuator_driver.egg-info/entry_points.txt
+[1.396s] writing requirements to ../../build/actuator_driver/actuator_driver.egg-info/requires.txt
+[1.396s] writing top-level names to ../../build/actuator_driver/actuator_driver.egg-info/top_level.txt
+[1.435s] reading manifest file '../../build/actuator_driver/actuator_driver.egg-info/SOURCES.txt'
+[1.436s] writing manifest file '../../build/actuator_driver/actuator_driver.egg-info/SOURCES.txt'
+[1.436s] running build
+[1.437s] running build_py
+[1.437s] copying actuator_driver/crab_controller.py -> /home/shafa/flapping-propulsors-control/build/actuator_driver/build/lib/actuator_driver
+[1.437s] running install
+[1.443s] running install_lib
+[1.463s] copying /home/shafa/flapping-propulsors-control/build/actuator_driver/build/lib/actuator_driver/crab_controller.py -> /home/shafa/flapping-propulsors-control/install/actuator_driver/lib/python3.12/site-packages/actuator_driver
+[1.463s] byte-compiling /home/shafa/flapping-propulsors-control/install/actuator_driver/lib/python3.12/site-packages/actuator_driver/crab_controller.py to crab_controller.cpython-312.pyc
+[1.465s] running install_data
+[1.465s] running install_egg_info
+[1.486s] removing '/home/shafa/flapping-propulsors-control/install/actuator_driver/lib/python3.12/site-packages/actuator_driver-0.0.0-py3.12.egg-info' (and everything under it)
+[1.487s] Copying ../../build/actuator_driver/actuator_driver.egg-info to /home/shafa/flapping-propulsors-control/install/actuator_driver/lib/python3.12/site-packages/actuator_driver-0.0.0-py3.12.egg-info
+[1.488s] running install_scripts
+[1.614s] Installing actuator script to /home/shafa/flapping-propulsors-control/install/actuator_driver/lib/actuator_driver
+[1.615s] Installing crab script to /home/shafa/flapping-propulsors-control/install/actuator_driver/lib/actuator_driver
+[1.616s] Installing crab_controller script to /home/shafa/flapping-propulsors-control/install/actuator_driver/lib/actuator_driver
+[1.616s] writing list of installed files to '/home/shafa/flapping-propulsors-control/build/actuator_driver/install.log'
+[1.641s] Invoked command in '/home/shafa/flapping-propulsors-control/src/actuator_driver' returned '0': PYTHONPATH=/home/shafa/flapping-propulsors-control/build/actuator_driver/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/shafa/flapping-propulsors-control/install/actuator_driver/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/actuator_driver build --build-base /home/shafa/flapping-propulsors-control/build/actuator_driver/build install --record /home/shafa/flapping-propulsors-control/build/actuator_driver/install.log --single-version-externally-managed install_data

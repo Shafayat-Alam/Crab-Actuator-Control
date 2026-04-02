@@ -50,7 +50,7 @@ import math
 class CrabController(Node):
     def __init__(self):
         super().__init__('crab_motion_engine')
-        
+        """
         # --- Actuator Mapping ---
         # Left: 1 (Roll), 2 (Pitch) | Right: 3 (Roll), 4 (Pitch)
         self.actuators = {
@@ -58,16 +58,20 @@ class CrabController(Node):
             "right": {"roll": 3.0, "pitch": 4.0}
         }
         self.all_ids = [1.0, 2.0, 3.0, 4.0]
-
+        """
         # --- ROS & Logging ---
         self.joint_pub = self.create_publisher(Float32MultiArray, 'joint_cmd', 10)
-        self.motion_sub = self.create_subscription(String, 'motion_cmd', self.motion_cb, 10)
-        self.feedback_sub = self.create_subscription(Float32MultiArray, 'joint_feedback', self.feedback_cb, 10)
+        time.sleep(1.0)
+        self.torque_enable()
+        ##self.motion_sub = self.create_subscription(String, 'motion_cmd', self.motion_cb, 10)
+        ##self.feedback_sub = self.create_subscription(Float32MultiArray, 'joint_feedback', self.feedback_cb, 10)
         
+        """
         self.csv_file = open(f"crab_log_{int(time.time())}.csv", mode='w', newline='')
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(['ts', 'cmd_idx', 'id', 'mode', 'goal', 'actual'])
-
+        """
+        """
         # --- State & Failsafes ---
         self.command_count = 0
         self.LIMITS = {"min": -1.57, "max": 1.57} # Radian limits
@@ -76,38 +80,56 @@ class CrabController(Node):
         
         self.active_motions = {} # Side -> Params
         self.timer = self.create_timer(0.05, self.update_motion_loop) # 20Hz Heartbeat
-
+        """
     # =========================================================================
     # MOTION LIBRARY
     # =========================================================================
 
+    """
     def forward_flap(self, t, freq, amp):
-        """Standard vertical flapping."""
+        
         val = amp * math.sin(2 * math.pi * freq * t)
         return {"roll": val, "pitch": 0.0}
 
     def backward_flap(self, t, freq, amp):
-        """Reverse flapping logic."""
+        
         val = amp * math.sin(2 * math.pi * freq * t)
         return {"roll": -val, "pitch": 0.0}
 
     def forward_gait(self, t, freq, amp):
 
-        """90-degree phase shift between Roll and Pitch."""
+        
         roll_val = amp * math.sin(2 * math.pi * freq * t)
         pitch_val = amp * math.cos(2 * math.pi * freq * t)
         return {"roll": roll_val, "pitch": pitch_val}
 
     def calibration(self, t, freq, amp):
-        """Zero out the actuator."""
+        
         return {"roll": 0.0, "pitch": 0.0}
+    """
 
     # =========================================================================
     # SYSTEM LOGIC
     # =========================================================================
 
+    def torque_enable(self):
+        """Sends a command to lock motors 1-4 without moving them from their current spot."""
+        msg = Float32MultiArray()
+        
+        # Structure: [IDs 1-4] + [Modes -1] + [Goals 0]
+        # The Actuator Node sees the -1.0 and ignores the 0.0 goals.
+        msg.data = [
+            1.0, 2.0, 3.0, 4.0,    # IDs
+            -1.0, -1.0, -1.0, -1.0, # Torque-Only Flags
+            0.0, 0.0, 0.0, 0.0      # Dummy Goals
+        ]
+        
+        self.joint_pub.publish(msg)
+        self.get_logger().info("Torque Enable (-1 flag) sent to Actuator.")
+
+    """
     def motion_cb(self, msg):
-        """Parser: actuators:[l,r] motions:[f,b] modes:[3,3] freqs:[1,1] amps:[0.5,0.5]"""
+        
         try:
             self.command_count += 1
             parts = msg.data.lower().replace(' ', '').split(']')
@@ -162,6 +184,7 @@ class CrabController(Node):
             sid = self.all_ids[i]
             self.csv_writer.writerow([ts, self.command_count, sid, self.current_modes[sid], self.current_goals[sid], val])
         self.csv_file.flush()
+    """
 
     def destroy_node(self):
         self.csv_file.close()
