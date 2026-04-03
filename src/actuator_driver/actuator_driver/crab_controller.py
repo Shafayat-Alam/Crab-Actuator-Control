@@ -15,7 +15,7 @@ class CrabController(Node):
         }
         self.all_ids = [1.0, 2.0, 3.0, 4.0]
 
-        # --- Physical Calibration Offsets (From your image) ---
+        # --- Physical Calibration Offsets ---
         self.OFFSETS = {
             1.0: 3.65, # servo1
             2.0: 3.3,  # servo2
@@ -53,13 +53,81 @@ class CrabController(Node):
         """Zero out the actuator relative to the physical offsets."""
         return {"roll": 0.0, "pitch": 0.0}
 
+    def forward_flap(self, t, freq, amp):
+        """
+        Roll: Rotates +90 degrees (1.5708 rad) from calibration.
+        Pitch: Flaps at the provided frequency and amplitude (radians).
+        """
+        # 1. Roll shift (Fixed at +90 degrees relative to offset)
+        target_roll = 1.5708 
+        
+        # 2. Pitch Flap (Oscillates around the calibration offset)
+        target_pitch = amp * math.sin(2 * math.pi * freq * t)
+        
+        return {"roll": target_roll, "pitch": target_pitch}
+    
+    def backward_flap(self, t, freq, amp):
+        """
+        Roll: Rotates -90 degrees (-1.5708 rad) from calibration.
+        Pitch: Flaps with a 180-degree phase shift relative to forward_flap.
+        """
+        # 1. Roll shift (-90 degrees relative to offset)
+        target_roll = -1.5708 
+        
+        # 2. Pitch Flap (Reversed phase)
+        target_pitch = amp * math.sin(2 * math.pi * freq * t + math.pi)
+        
+        return {"roll": target_roll, "pitch": target_pitch}
+
+    def forward_paddle(self, t, freq, amp):
+        """
+        Phase 1: Pitch 0 -> +Amp | Roll 0 -> +90
+        Phase 2: Pitch +Amp -> -Amp | Roll HOLD +90
+        Phase 3: Pitch -Amp -> 0 | Roll +90 -> 0
+        """
+        # Master clock (0 to 2*pi)
+        theta = (2 * math.pi * freq * t) % (2 * math.pi)
+        
+        target_pitch = amp * math.sin(theta)
+        
+        if theta <= 0.5 * math.pi:
+            target_roll = 1.5708 * math.sin(theta * 1.0) 
+        elif theta <= 1.5 * math.pi:
+            target_roll = 1.5708
+        else:
+            transition_theta = theta - math.pi 
+            target_roll = 1.5708 * math.sin(transition_theta)
+
+        return {"roll": target_roll, "pitch": target_pitch}
+
+    def backward_paddle(self, t, freq, amp):
+        """
+        Phase 1: Pitch 0 -> +Amp | Roll 0 -> -90
+        Phase 2: Pitch +Amp -> -Amp | Roll HOLD -90
+        Phase 3: Pitch -Amp -> 0 | Roll -90 -> 0
+        """
+        # Master clock (0 to 2*pi)
+        theta = (2 * math.pi * freq * t) % (2 * math.pi)
+        
+        target_pitch = amp * math.sin(theta)
+        
+        if theta <= 0.5 * math.pi:
+            # Phase 1: Sweeping back to -90
+            target_roll = -1.5708 * math.sin(theta)
+        elif theta <= 1.5 * math.pi:
+            target_roll = -1.5708
+        else:
+            transition_theta = theta - math.pi
+            target_roll = -1.5708 * math.sin(transition_theta)
+
+        return {"roll": target_roll, "pitch": target_pitch}
+
     # =========================================================================
     # SYSTEM LOGIC
     # =========================================================================
 
     def torque_enable(self):
         msg = Float32MultiArray()
-        # Note: Torque enable ignores goals, so we don't need offsets here
         msg.data = [
             1.0, 2.0, 3.0, 4.0,    # IDs
             -1.0, -1.0, -1.0, -1.0, # Torque-Only Flags

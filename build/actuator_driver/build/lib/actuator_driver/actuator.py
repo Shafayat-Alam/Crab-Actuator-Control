@@ -49,90 +49,6 @@ class ActuatorNode(Node):
         self.CENTER_TICK = 2048
 
         self.get_logger().info("Actuator Node Online. (Pure Hardware Driver)")
-    
-    """
-    def hw_cb(self, msg):
-        if not rclpy.ok(): return
-
-        TICKS_PER_RAD = 4096.0 / (2.0 * math.pi)
-
-        n = len(msg.data) // 3
-        ids = [int(x) for x in msg.data[0:n]]
-        modes = [int(x) for x in msg.data[n:2*n]]
-        goals = [float(x) for x in msg.data[2*n:3*n]]
-
-        # 1. Initialize SyncWrite Handlers
-        pos_sync = GroupSyncWrite(self.port, self.packet_handler, self.ADDR_GOAL_POS, 4)
-        vel_sync = GroupSyncWrite(self.port, self.packet_handler, self.ADDR_GOAL_VEL, 4)
-
-        # --- LOOP 1: HARDWARE STATE GUARDS & PACK DATA ---
-        for i in range(n):
-            sid, mode, goal = ids[i], modes[i], goals[i]
-
-            # --- DYNAMIC HARDWARE CHECK ---
-            # Read current Torque and Mode status in one go (if possible) or sequentially
-            torque_status, _, _ = self.packet_handler.read1ByteTxRx(self.port, sid, self.ADDR_TORQUE)
-            current_hw_mode, _, _ = self.packet_handler.read1ByteTxRx(self.port, sid, self.ADDR_MODE)
-
-            # 1. Mode Guard: Switch mode if it doesn't match
-            if current_hw_mode != mode:
-                self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 0) 
-                self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_MODE, mode)
-                self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 1) 
-            
-            # 2. Torque Guard: Enable torque if it's currently OFF (0)
-            if torque_status == 0:
-                self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 1)
-                
-            if mode == -1.0:
-            # Check current torque; if OFF, turn it ON
-                torque_status, _, _ = self.packet_handler.read1ByteTxRx(self.port, sid, self.ADDR_TORQUE)
-                if torque_status == 0:
-                    self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 1)
-                    self.get_logger().info(f"ID {sid} Torque ENABLED (Locked in place)")
-                continue
-            
-            # --- DATA PROCESSING ---
-            if mode == 3: # Position Mode
-                tick_goal = int(goal * TICKS_PER_RAD)
-                final_val = max(0, min(4095, tick_goal))
-            else:         # Velocity/Extended Mode
-                final_val = int(goal)
-
-            val = [
-                DXL_LOBYTE(DXL_LOWORD(final_val)),
-                DXL_HIBYTE(DXL_LOWORD(final_val)),
-                DXL_LOBYTE(DXL_HIWORD(final_val)),
-                DXL_HIBYTE(DXL_HIWORD(final_val))
-            ]
-            
-            if mode == 3:
-                pos_sync.addParam(sid, val)
-            else:
-                vel_sync.addParam(sid, val)
-
-        # --- 2. TRANSMIT ONCE ---
-        pos_sync.txPacket()
-        vel_sync.txPacket()
-
-        # --- 3. CLEANUP ---
-        pos_sync.clearParam()
-        vel_sync.clearParam()
-
-        # --- 4. READ FEEDBACK ---
-        feedback_msg = Float32MultiArray()
-        current_positions = []
-        for sid in ids:
-            raw_pos, res, err = self.packet_handler.read4ByteTxRx(self.port, sid, self.ADDR_PRESENT_POS)
-            if res == 0:
-                rad_pos = float(raw_pos) / TICKS_PER_RAD
-                current_positions.append(rad_pos)
-            else:
-                current_positions.append(-1.0) 
-        
-        feedback_msg.data = [float(sid) for sid in ids] + current_positions
-        self.feedback_pub.publish(feedback_msg)
-    """
 
     def hw_cb(self, msg):
         if not rclpy.ok(): return
@@ -216,7 +132,7 @@ class ActuatorNode(Node):
         
         feedback_msg.data = [float(s) for s in ids] + current_positions
         self.feedback_pub.publish(feedback_msg)
-        
+
     def destroy_node(self):
         self.get_logger().info("Shutting down Actuator Node.")
         super().destroy_node()
