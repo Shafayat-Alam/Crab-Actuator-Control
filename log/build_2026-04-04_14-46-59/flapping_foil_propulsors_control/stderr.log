@@ -1,0 +1,5 @@
+  File "/home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/python3.12/site-packages/flapping_foil_propulsors_control/CrabController2DOF.py", line 126
+    """Fixed 90-degree roll with sinusoidal pitch."""
+       ^^^^^
+SyntaxError: invalid syntax
+

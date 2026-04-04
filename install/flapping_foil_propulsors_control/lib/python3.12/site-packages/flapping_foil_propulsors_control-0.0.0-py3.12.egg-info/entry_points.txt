@@ -1,0 +1,4 @@
+[console_scripts]
+CrabController2DOF = flapping_foil_propulsors_control.CrabController2DOF:main
+Dynamixcel_WX430_T200_interface = flapping_foil_propulsors_control.Dynamixcel_WX430_T200_interface:main
+crab = flapping_foil_propulsors_control.crab:main
