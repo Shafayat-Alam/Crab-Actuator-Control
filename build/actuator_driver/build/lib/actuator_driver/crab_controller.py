@@ -88,23 +88,14 @@ class CrabController(Node):
         # Master clock (0 to 2*pi)
         theta = (2 * math.pi * freq * t) % (2 * math.pi)
         
-        # 1. Pitch: Standard Continuous Flap
         target_pitch = amp * math.sin(theta)
         
-        # 2. Roll: Custom Phased Sweep
-        # We want Roll to reach 90 degrees exactly when Pitch hits +Amp (at pi/2)
-        # and stay there until Pitch hits -Amp (at 3pi/2).
-        
         if theta <= 0.5 * math.pi:
-            # Phase 1: Rolling up to 90 as pitch flaps up
             target_roll = 1.5708 * math.sin(theta * 1.0) 
         elif theta <= 1.5 * math.pi:
-            # Phase 2: Pitch is doing its full swing; Roll HOLDS +90
             target_roll = 1.5708
         else:
-            # Phase 3: Pitch returning to 0; Roll sweeps back to 0
-            # We map (1.5pi to 2pi) back to a (pi/2 to 0) range
-            transition_theta = theta - math.pi # Shifting to align the curve
+            transition_theta = theta - math.pi 
             target_roll = 1.5708 * math.sin(transition_theta)
 
         return {"roll": target_roll, "pitch": target_pitch}
@@ -118,18 +109,14 @@ class CrabController(Node):
         # Master clock (0 to 2*pi)
         theta = (2 * math.pi * freq * t) % (2 * math.pi)
         
-        # 1. Pitch: Continuous 'Nice Flap' (Matches Forward Timing)
         target_pitch = amp * math.sin(theta)
         
-        # 2. Roll: Custom Phased Sweep (Mirrored to -1.5708)
         if theta <= 0.5 * math.pi:
             # Phase 1: Sweeping back to -90
             target_roll = -1.5708 * math.sin(theta)
         elif theta <= 1.5 * math.pi:
-            # Phase 2: Pitch is flapping; Roll HOLDS at the rear (-90)
             target_roll = -1.5708
         else:
-            # Phase 3: Pitch returning to neutral; Roll resets to 0
             transition_theta = theta - math.pi
             target_roll = -1.5708 * math.sin(transition_theta)
 
@@ -188,28 +175,7 @@ class CrabController(Node):
                 modes[self.actuators[side]["pitch"]] = p["mode"]
 
         self.send_to_actuator(goals, modes)
-    """
-    def update_motion_loop(self):
-    if not self.active_motions: return
-    
-    # We will send a "burst" of the next 10 points (50ms of motion at 5ms intervals)
-    msg = Float32MultiArray()
-    packet = []
-    
-    # Header: [ID1, ID2, ID3, ID4, Mode1, Mode2, Mode3, Mode4]
-    # Followed by: [Goal_t1_ID1, Goal_t1_ID2...]
-    
-    for step in range(10): # 10 future points
-        lookahead_t = (time.time() - self.start_t) + (step * 0.005) 
-        for side, p in self.active_motions.items():
-            res = self.motion_func(lookahead_t, p["freq"], p["amp"])
-            # Apply offsets and append to packet
-            packet.append(res["roll"] + self.OFFSETS[roll_id])
-            packet.append(res["pitch"] + self.OFFSETS[pitch_id])
-            
-    msg.data = header + packet
-    self.joint_pub.publish(msg)
-    """
+
     def send_to_actuator(self, goals, modes):
         msg = Float32MultiArray()
         ids = sorted(goals.keys())
