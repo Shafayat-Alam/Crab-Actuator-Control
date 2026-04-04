@@ -1,4 +1,4 @@
-# Bio-Inspired Gait Engine (In-Progress)
+# Bio-Inspired Gait Engine (In-Progress, README needs significant updating)
  
 A ROS 2 control stack for a 2-DOF bio-inspired robotic system designed following the ROS2 Control Framework. The architecture enables modular decoupling between nodes to ensure that high-level behavioral logic remains independent of low-level serial communication and hardware drivers.
  
@@ -93,7 +93,4 @@ Tell robot_cmd to do something. Controller takes that information and coordinate
 - Dynamixel SDK
 - Python ...some vresion...
  
----
- 
-## Author
  
