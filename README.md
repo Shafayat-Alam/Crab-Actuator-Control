@@ -27,7 +27,7 @@ A ROS 2 control stack for a 2-DOF bio-inspired robotic system designed following
 **The "Kinematic Engine."** Translates abstract frequencies and amplitudes into time series trajectories.
  
 Implements a library of motion trajectories including:
-- 3-phase paddling gait using synchronized sine/cosine coupling
+- sinosoudal paddling gait using synchronized sine/cosine coupling
 - Flapping gait following sine function trajectory
 - Calibration of both left and right actuators
 - Feedback logging to CSV file

@@ -14,11 +14,11 @@ class CrabController2DOF(Node):
         }
         self.all_ids = [1.0, 2.0, 3.0, 4.0]
         self.OFFSETS = {1.0: 3.65, 2.0: 3.3, 3.0: 2.95, 4.0: 1.86}
-        self.LIMITS = {"min": 0.0, "max": 5.2}
+        self.LIMITS = {"min": 0.0, "max": 6.28}
 
         # --- Publishers ---
-        self.joint_pub = self.create_publisher(Float32MultiArray, 'joint_cmd', 10)
-        self.telemetry_pub = self.create_publisher(Float32MultiArray, 'telemetry', 10)
+        self.joint_pub = self.create_publisher(Float32MultiArray, 'joint_cmd', 1)
+        self.telemetry_pub = self.create_publisher(Float32MultiArray, 'telemetry', 5)
         
         # --- Subscriptions ---
         self.motion_sub = self.create_subscription(String, 'motion_cmd', self.motion_cb, 10)
@@ -35,7 +35,7 @@ class CrabController2DOF(Node):
 
         time.sleep(1.5)
         self.torque_enable()
-        self.timer = self.create_timer(0.05, self.update_motion_loop)
+        self.timer = self.create_timer(0.01, self.update_motion_loop)
 
     def feedback_cb(self, msg):
         # Expecting msg.data as [ID1, Pos1, ID2, Pos2...]
@@ -104,7 +104,7 @@ class CrabController2DOF(Node):
         telem_msg.data = telem_data
         self.telemetry_pub.publish(telem_msg)
 
-    # --- Library Functions ---
+    # --- Motion Library Functions ---
     def forward_paddle(self, t, freq, amp):
         theta = 2 * math.pi * freq * t
         return {"roll": 1.5708 * math.sin(theta + (math.pi/2)), "pitch": amp * math.sin(theta)}
@@ -118,6 +118,12 @@ class CrabController2DOF(Node):
 
     def backward_flap(self, t, freq, amp):
         return {"roll": -1.5708, "pitch": amp * math.sin(2 * math.pi * freq * t + math.pi)}
+
+    def up_flap(self, t, freq, amp):
+        return {"roll": 0, "pitch": amp * math.sin(2 * math.pi * freq * t)}
+
+    def up_flap(self, t, freq, amp):
+        return {"roll": 0, "pitch": amp * math.sin(2 * math.pi * freq * t + math.pi)}
 
     def torque_enable(self):
         msg = Float32MultiArray()

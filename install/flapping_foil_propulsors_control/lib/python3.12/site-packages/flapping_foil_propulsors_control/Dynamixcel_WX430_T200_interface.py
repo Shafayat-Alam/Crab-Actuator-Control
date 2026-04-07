@@ -16,7 +16,7 @@ class Dynamixcel_WX430_T200_interface(Node):
         self.port = PortHandler('/dev/ttyUSB0')
         self.packet_handler = PacketHandler(2.0)
         
-        if not self.port.openPort() or not self.port.setBaudRate(115200):
+        if not self.port.openPort() or not self.port.setBaudRate(1000000):
             self.get_logger().error("Hardware Link Failed! Check Baud Rate and Power.")
             
         # Register Addresses
@@ -45,11 +45,11 @@ class Dynamixcel_WX430_T200_interface(Node):
             self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 1)
 
         # --- ROS Communication ---
-        self.feedback_pub = self.create_publisher(Float32MultiArray, 'joint_feedback', 10)
-        self.joint_sub = self.create_subscription(Float32MultiArray, 'joint_cmd', self.hw_cb, 1) # Low queue to avoid lag
+        self.feedback_pub = self.create_publisher(Float32MultiArray, 'joint_feedback', 1)
+        self.joint_sub = self.create_subscription(Float32MultiArray, 'joint_cmd', self.hw_cb, 1) 
         
-        # High-frequency timer for feedback to keep the motion callback pure
-        self.create_timer(0.02, self.publish_feedback) # 50Hz feedback
+       
+        self.create_timer(0.01, self.publish_feedback) # 50Hz feedback
 
         self.get_logger().info("Actuator Node Online. Jitter-optimized with SyncRead/Write.")
 
@@ -105,7 +105,7 @@ class Dynamixcel_WX430_T200_interface(Node):
 
         msg = Float32MultiArray()
         msg.data = [float(s) for s in self.active_ids] + current_positions
-        self.feedback_pub.publish(msg)
+        self.feedback_pub.publish(msg)   
 
     def destroy_node(self):
         for sid in self.active_ids:

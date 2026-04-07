@@ -42,7 +42,7 @@ class Crab(Node):
         time.sleep(cycles / freq) 
         
         self.state = "CALIBRATING"
-        time.sleep(0.5)
+        #time.sleep(0.5)
         self.state = "IDLE"
         self.get_logger().info("Ready for next command.")
 
