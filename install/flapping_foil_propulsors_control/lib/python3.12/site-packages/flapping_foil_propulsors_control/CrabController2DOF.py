@@ -35,7 +35,7 @@ class CrabController2DOF(Node):
 
         time.sleep(1.5)
         self.torque_enable()
-        self.timer = self.create_timer(0.01, self.update_motion_loop)
+        self.timer = self.create_timer(0.001, self.update_motion_loop)
 
     def feedback_cb(self, msg):
         # Expecting msg.data as [ID1, Pos1, ID2, Pos2...]
@@ -99,7 +99,7 @@ class CrabController2DOF(Node):
         # Send to Motors
         msg.data = [float(idx) for idx in ids] + [modes[idx] for idx in ids] + final_goals
         self.joint_pub.publish(msg)
-        
+
         # Send to ROS Bag (Telemetry)
         telem_msg.data = telem_data
         self.telemetry_pub.publish(telem_msg)
@@ -122,7 +122,7 @@ class CrabController2DOF(Node):
     def up_flap(self, t, freq, amp):
         return {"roll": 0, "pitch": amp * math.sin(2 * math.pi * freq * t)}
 
-    def up_flap(self, t, freq, amp):
+    def down_flap(self, t, freq, amp):
         return {"roll": 0, "pitch": amp * math.sin(2 * math.pi * freq * t + math.pi)}
 
     def torque_enable(self):

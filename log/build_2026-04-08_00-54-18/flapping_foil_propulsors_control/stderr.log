@@ -1,0 +1,5 @@
+  File "/home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/python3.12/site-packages/flapping_foil_propulsors_control/Dynamixcel_WX430_T200_interface.py", line 62
+    """Pure Write-Only Callback: No blocking reads allowed here."""
+       ^^^^
+SyntaxError: invalid syntax
+

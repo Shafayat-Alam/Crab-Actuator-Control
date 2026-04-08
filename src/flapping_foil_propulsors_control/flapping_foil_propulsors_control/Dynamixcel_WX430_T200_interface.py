@@ -16,7 +16,7 @@ class Dynamixcel_WX430_T200_interface(Node):
         self.port = PortHandler('/dev/ttyUSB0')
         self.packet_handler = PacketHandler(2.0)
         
-        if not self.port.openPort() or not self.port.setBaudRate(1000000):
+        if not self.port.openPort() or not self.port.setBaudRate(3000000):
             self.get_logger().error("Hardware Link Failed! Check Baud Rate and Power.")
             
         # Register Addresses
@@ -26,7 +26,7 @@ class Dynamixcel_WX430_T200_interface(Node):
         self.ADDR_GOAL_VEL = 104
         self.ADDR_PRESENT_POS = 132
         
-        self.active_ids = [1, 2, 3, 4]
+        self.active_ids = [1, 2]
         self.TICKS_PER_RAD = 4096.0 / (2.0 * math.pi)
 
         # Initialize Sync Handlers once to save memory/overhead
@@ -37,6 +37,10 @@ class Dynamixcel_WX430_T200_interface(Node):
         self.pos_read_sync = GroupSyncRead(self.port, self.packet_handler, self.ADDR_PRESENT_POS, 4)
         for sid in self.active_ids:
             self.pos_read_sync.addParam(sid)
+
+        # Set Return Delay Time to 0 (default is usually 250, which is too slow)
+        for sid in self.active_ids:
+            self.packet_handler.write1ByteTxRx(self.port, sid, 9, 0)
 
         # INITIAL SETUP: Set modes and torque ONCE here, not in the loop.
         for sid in self.active_ids:
@@ -49,7 +53,7 @@ class Dynamixcel_WX430_T200_interface(Node):
         self.joint_sub = self.create_subscription(Float32MultiArray, 'joint_cmd', self.hw_cb, 1) 
         
        
-        self.create_timer(0.01, self.publish_feedback) # 50Hz feedback
+        self.feedback_timer = self.create_timer(0.001, self.publish_feedback) # 50Hz
 
         self.get_logger().info("Actuator Node Online. Jitter-optimized with SyncRead/Write.")
 
@@ -90,9 +94,19 @@ class Dynamixcel_WX430_T200_interface(Node):
 
     def publish_feedback(self):
         """Asynchronous feedback using SyncRead to prevent blocking motion."""
+        
+        # --- ADD THESE TWO LINES HERE (Mandatory for SyncRead) ---
+        self.pos_read_sync.clearParam()
+        for sid in self.active_ids:
+            self.pos_read_sync.addParam(sid)
+        # ---------------------------------------------------------
+
         dxl_comm_result = self.pos_read_sync.txRxPacket()
-        if dxl_comm_result != COMM_SUCCESS:
-            return
+        
+        if dxl_comm_result == COMM_SUCCESS:
+            # This will now actually log success frequently
+            # self.get_logger().info("Feedback Success.") 
+            pass
 
         current_positions = []
         for sid in self.active_ids:
@@ -100,12 +114,10 @@ class Dynamixcel_WX430_T200_interface(Node):
                 raw_pos = self.pos_read_sync.getData(sid, self.ADDR_PRESENT_POS, 4)
                 rad_pos = float(cast_to_int32(raw_pos)) / self.TICKS_PER_RAD
                 current_positions.append(rad_pos)
-            else:
-                current_positions.append(-999.0)
 
         msg = Float32MultiArray()
         msg.data = [float(s) for s in self.active_ids] + current_positions
-        self.feedback_pub.publish(msg)   
+        self.feedback_pub.publish(msg)
 
     def destroy_node(self):
         for sid in self.active_ids:
@@ -115,14 +127,14 @@ class Dynamixcel_WX430_T200_interface(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = Dynamixcel_WX430_T200_interface()
+    
     try:
-        rclpy.spin(node)
+        rclpy.spin(node) # This runs your timer automatically
     except KeyboardInterrupt:
         pass
     finally:
-        if rclpy.ok():
-            node.destroy_node()
-            rclpy.shutdown()
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
