@@ -38,7 +38,6 @@ class CrabController2DOF(Node):
         self.timer = self.create_timer(0.001, self.update_motion_loop)
 
     def feedback_cb(self, msg):
-        # Expecting msg.data as [ID1, Pos1, ID2, Pos2...]
         for i in range(0, len(msg.data), 2):
             self.actual_positions[msg.data[i]] = msg.data[i+1]
 
