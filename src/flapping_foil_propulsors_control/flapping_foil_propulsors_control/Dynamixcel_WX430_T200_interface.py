@@ -1,5 +1,7 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Float32MultiArray
 from dynamixel_sdk import *
 import ctypes
@@ -17,7 +19,7 @@ class Dynamixcel_WX430_T200_interface(Node):
         self.packet_handler = PacketHandler(2.0)
         
         if not self.port.openPort() or not self.port.setBaudRate(3000000):
-            self.get_logger().error("Hardware Link Failed! Check Baud Rate and Power.")
+            self.get_logger().error("Hardware Link Failed! Check Connection and Power.")
             
         # Register Addresses
         self.ADDR_TORQUE = 64
@@ -26,10 +28,10 @@ class Dynamixcel_WX430_T200_interface(Node):
         self.ADDR_GOAL_VEL = 104
         
         # Feedback Block Addresses (Registers 126 to 144)
-        self.ADDR_PRESENT_CURR = 126 # 2 Byte
-        self.ADDR_PRESENT_VEL  = 128 # 4 Byte
-        self.ADDR_PRESENT_POS  = 132 # 4 Byte
-        self.ADDR_PRESENT_VOLT = 144 # 2 Byte
+        self.ADDR_PRESENT_CURR = 126 
+        self.ADDR_PRESENT_VEL  = 128 
+        self.ADDR_PRESENT_POS  = 132 
+        self.ADDR_PRESENT_VOLT = 144 
         
         # Calculation Constants
         self.TICKS_PER_RAD = 4096.0 / (2.0 * math.pi)
@@ -44,11 +46,26 @@ class Dynamixcel_WX430_T200_interface(Node):
         self.vel_sync = None
         self.feedback_read_sync = None
 
+        # --- Multi-Threading Setup ---
+        # Reentrant group allows callbacks to run in parallel without blocking each other
+        self.callback_group = ReentrantCallbackGroup()
+
         # --- ROS Communication ---
         self.feedback_pub = self.create_publisher(Float32MultiArray, 'joint_feedback', 1)
-        self.joint_sub = self.create_subscription(Float32MultiArray, 'joint_cmd', self.hw_cb, 1) 
         
-        self.feedback_timer = self.create_timer(0.01, self.publish_feedback) # 100Hz
+        # Assign callback group to Subscriber
+        self.joint_sub = self.create_subscription(
+            Float32MultiArray, 
+            'joint_cmd', 
+            self.hw_cb, 
+            1, 
+            callback_group=self.callback_group) 
+        
+        # Assign callback group to Timer
+        self.feedback_timer = self.create_timer(
+            0.01, 
+            self.publish_feedback, 
+            callback_group=self.callback_group) # 100Hz
 
         self.get_logger().info("Interface Waiting for first joint_cmd to configure IDs...")
 
@@ -66,12 +83,12 @@ class Dynamixcel_WX430_T200_interface(Node):
             mode = int(initial_modes[i])
             self.id_modes[sid] = float(mode)
             
-            self.packet_handler.write1ByteTxRx(self.port, sid, 9, 0) # Min delay
+            self.packet_handler.write1ByteTxRx(self.port, sid, 9, 0) # Set return delay to 0
             self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_MODE, mode)
             self.feedback_read_sync.addParam(sid)
 
         self.is_configured = True
-        self.get_logger().info("Hardware Configuration Complete. All sensors active.")
+        self.get_logger().info("Hardware Configuration Complete. Multi-threaded feedback active.")
 
     def hw_cb(self, msg):
         if not rclpy.ok(): return
@@ -88,7 +105,6 @@ class Dynamixcel_WX430_T200_interface(Node):
             sid, mode, goal = incoming_ids[i], modes[i], goals[i]
             if sid not in self.active_ids: continue
 
-            # Update local mode tracker if it changes during runtime
             if self.id_modes[sid] != mode:
                 self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 0)
                 self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_MODE, int(mode))
@@ -121,20 +137,17 @@ class Dynamixcel_WX430_T200_interface(Node):
         feedback_data = []
         for sid in self.active_ids:
             if self.feedback_read_sync.isAvailable(sid, self.ADDR_PRESENT_CURR, 20):
-                # Data Extraction
                 curr_raw = self.feedback_read_sync.getData(sid, self.ADDR_PRESENT_CURR, 2)
                 vel_raw  = self.feedback_read_sync.getData(sid, self.ADDR_PRESENT_VEL, 4)
                 pos_raw  = self.feedback_read_sync.getData(sid, self.ADDR_PRESENT_POS, 4)
                 volt_raw = self.feedback_read_sync.getData(sid, self.ADDR_PRESENT_VOLT, 2)
 
-                # Unit Conversions
                 current_amps = float(ctypes.c_int16(curr_raw).value) * 0.001
                 velocity_rads = float(cast_to_int32(vel_raw)) * self.VEL_UNIT_TO_RADS
                 position_rad = float(cast_to_int32(pos_raw)) / self.TICKS_PER_RAD
                 voltage_v = float(volt_raw) * 0.1
                 mode = self.id_modes[sid]
 
-                # Append to message: [ID, Mode, Pos, Vel, Curr, Volt]
                 feedback_data.extend([float(sid), mode, position_rad, velocity_rads, current_amps, voltage_v])
 
         if feedback_data:
@@ -152,8 +165,13 @@ class Dynamixcel_WX430_T200_interface(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = Dynamixcel_WX430_T200_interface()
+    
+    # --- Multi-threaded Executor ---
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+    
     try:
-        rclpy.spin(node) 
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
