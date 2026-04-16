@@ -1,11 +1,10 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Float32MultiArray
 from dynamixel_sdk import *
 import ctypes
 import math
+import time
 
 def cast_to_int32(value):
     return ctypes.c_int32(int(value)).value
@@ -14,166 +13,154 @@ class Dynamixcel_WX430_T200_interface(Node):
     def __init__(self):
         super().__init__('servo_actuator')
         
-        # --- Hardware Initialization ---
         self.port = PortHandler('/dev/ttyUSB0')
         self.packet_handler = PacketHandler(2.0)
         
-        if not self.port.openPort() or not self.port.setBaudRate(3000000):
-            self.get_logger().error("Hardware Link Failed! Check Connection and Power.")
-            
-        # Register Addresses
+        if not self.port.openPort() or not self.port.setBaudRate(9600000):
+            self.get_logger().error("Hardware Link Failed at 9.6Mbps!")
+
         self.ADDR_TORQUE = 64
         self.ADDR_MODE = 11
-        self.ADDR_GOAL_POS = 116 
-        self.ADDR_GOAL_VEL = 104
+        self.ADDR_PROF_ACCEL = 108
+        self.ADDR_PROF_VEL = 112
         
-        # Feedback Block Addresses (Registers 126 to 144)
-        self.ADDR_PRESENT_CURR = 126 
-        self.ADDR_PRESENT_VEL  = 128 
-        self.ADDR_PRESENT_POS  = 132 
-        self.ADDR_PRESENT_VOLT = 144 
-        
-        # Calculation Constants
         self.TICKS_PER_RAD = 4096.0 / (2.0 * math.pi)
         self.VEL_UNIT_TO_RADS = 0.229 * (2.0 * math.pi / 60.0)
 
-        # Configuration State
+        self.latest_command = None 
         self.active_ids = []
-        self.id_modes = {} 
+        self.id_modes = {}
         self.is_configured = False
-        
-        self.pos_sync = None
-        self.vel_sync = None
-        self.feedback_read_sync = None
+        self.is_configuring = False 
 
-        # --- Multi-Threading Setup ---
-        # Reentrant group allows callbacks to run in parallel without blocking each other
-        self.callback_group = ReentrantCallbackGroup()
-
-        # --- ROS Communication ---
         self.feedback_pub = self.create_publisher(Float32MultiArray, 'joint_feedback', 1)
+        self.joint_sub = self.create_subscription(Float32MultiArray, 'joint_cmd', self.ros_cb, 1)
+
+        self.control_timer = self.create_timer(0.001, self.hardware_loop)
+        self.get_logger().info("Interface Node Ready (1Mbps).")
+
+    def ros_cb(self, msg):
+        try:
+            n = len(msg.data) // 3
+            if n == 0: return
+            self.latest_command = (
+                [int(round(x)) for x in msg.data[0:n]],
+                [int(round(x)) for x in msg.data[n:2*n]],
+                [float(x) for x in msg.data[2*n:3*n]]
+            )
+        except Exception: pass
+
+    def hardware_loop(self):
+        if self.latest_command is None or self.is_configuring: 
+            return
         
-        # Assign callback group to Subscriber
-        self.joint_sub = self.create_subscription(
-            Float32MultiArray, 
-            'joint_cmd', 
-            self.hw_cb, 
-            1, 
-            callback_group=self.callback_group) 
-        
-        # Assign callback group to Timer
-        self.feedback_timer = self.create_timer(
-            0.01, 
-            self.publish_feedback, 
-            callback_group=self.callback_group) # 100Hz
-
-        self.get_logger().info("Interface Waiting for first joint_cmd to configure IDs...")
-
-    def configure_hardware(self, ids, initial_modes):
-        self.active_ids = ids
-        self.get_logger().info(f"Configuring hardware for IDs: {self.active_ids}")
-
-        self.pos_sync = GroupSyncWrite(self.port, self.packet_handler, self.ADDR_GOAL_POS, 4)
-        self.vel_sync = GroupSyncWrite(self.port, self.packet_handler, self.ADDR_GOAL_VEL, 4)
-        
-        # Read block: Current(126) to Voltage(144) = 20 bytes
-        self.feedback_read_sync = GroupSyncRead(self.port, self.packet_handler, self.ADDR_PRESENT_CURR, 20)
-
-        for i, sid in enumerate(self.active_ids):
-            mode = int(initial_modes[i])
-            self.id_modes[sid] = float(mode)
-            
-            self.packet_handler.write1ByteTxRx(self.port, sid, 9, 0) # Set return delay to 0
-            self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_MODE, mode)
-            self.feedback_read_sync.addParam(sid)
-
-        self.is_configured = True
-        self.get_logger().info("Hardware Configuration Complete. Multi-threaded feedback active.")
-
-    def hw_cb(self, msg):
-        if not rclpy.ok(): return
-        
-        n = len(msg.data) // 3
-        incoming_ids = [int(x) for x in msg.data[0:n]]
-        modes = [float(x) for x in msg.data[n:2*n]]
-        goals = [float(x) for x in msg.data[2*n:3*n]]
+        ids, modes, goals = self.latest_command
+        if not ids: return
 
         if not self.is_configured:
-            self.configure_hardware(incoming_ids, modes)
+            self.setup_sync_io(ids, modes)
+            return
 
-        for i in range(n):
-            sid, mode, goal = incoming_ids[i], modes[i], goals[i]
-            if sid not in self.active_ids: continue
+        try:
+            for i, sid in enumerate(ids):
+                if sid not in self.active_ids: continue
+                mode, goal = modes[i], goals[i]
 
-            if self.id_modes[sid] != mode:
-                self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 0)
-                self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_MODE, int(mode))
-                self.id_modes[sid] = mode
+                final_val = int(goal * self.TICKS_PER_RAD) if mode == 3 else int(goal)
+                
+                low_word = final_val & 0xFFFF
+                high_word = (final_val >> 16) & 0xFFFF
+                val = [DXL_LOBYTE(low_word), DXL_HIBYTE(low_word),
+                       DXL_LOBYTE(high_word), DXL_HIBYTE(high_word)]
+                
+                target = self.pos_sync if mode == 3 else self.vel_sync
+                target.addParam(sid, val)
 
-            if mode == 3.0:
-                final_val = int(max(0, min(4095, goal * self.TICKS_PER_RAD)))
-            else:
-                final_val = int(goal)
+            self.pos_sync.txPacket()
+            self.pos_sync.clearParam()
+            self.vel_sync.txPacket()
+            self.vel_sync.clearParam()
 
-            val = [DXL_LOBYTE(DXL_LOWORD(final_val)), DXL_HIBYTE(DXL_LOWORD(final_val)),
-                   DXL_LOBYTE(DXL_HIWORD(final_val)), DXL_HIBYTE(DXL_HIWORD(final_val))]
+            # READ PHASE
+            if self.feedback_read_sync.txRxPacket() == COMM_SUCCESS:
+                fb_data = []
+                for sid in self.active_ids:
+                    if self.feedback_read_sync.isAvailable(sid, 126, 20):
+                        curr = self.feedback_read_sync.getData(sid, 126, 2)
+                        vel  = self.feedback_read_sync.getData(sid, 128, 4)
+                        pos  = self.feedback_read_sync.getData(sid, 132, 4)
+                        volt = self.feedback_read_sync.getData(sid, 144, 2)
+                        fb_data.extend([
+                            float(sid), float(self.id_modes[sid]),
+                            float(cast_to_int32(pos)) / self.TICKS_PER_RAD,
+                            float(cast_to_int32(vel)) * self.VEL_UNIT_TO_RADS,
+                            float(ctypes.c_int16(curr).value) * 0.001,
+                            float(volt) * 0.1
+                        ])
+                if fb_data:
+                    msg = Float32MultiArray()
+                    msg.data = fb_data
+                    self.feedback_pub.publish(msg)
+        
+        except (ValueError, TypeError):
+            pass 
+        except Exception as e:
+            self.get_logger().error(f"Loop Failure: {e}")
+
+    def setup_sync_io(self, ids, modes):
+        self.is_configuring = True
+        self.get_logger().info("Applying Code Band-Aid (Traj Smoothing)...")
+        
+        self.port.clearPort()
+        self.active_ids = ids
+        self.pos_sync = GroupSyncWrite(self.port, self.packet_handler, 116, 4)
+        self.vel_sync = GroupSyncWrite(self.port, self.packet_handler, 104, 4)
+        self.feedback_read_sync = GroupSyncRead(self.port, self.packet_handler, 126, 20)
+        
+        for i, sid in enumerate(ids):
+            m = modes[i]
+            self.id_modes[sid] = m
             
-            if mode == 3.0:
-                self.pos_sync.addParam(sid, val)
+            # 1. Torque Off to configure
+            self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 0)
+            time.sleep(0.02)
+            
+            # 2. Set Operating Mode
+            self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_MODE, m)
+            
+            #self.packet_handler.write4ByteTxRx(self.port, sid, self.ADDR_PROF_ACCEL, 50)
+            #self.packet_handler.write4ByteTxRx(self.port, sid, self.ADDR_PROF_VEL, 500)
+            
+            # 4. Zero Return Delay for 1Mbps stability
+            self.packet_handler.write1ByteTxRx(self.port, sid, 9, 0) 
+            time.sleep(0.02)
+            
+            # 5. Torque On
+            res, err = self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 1)
+            
+            if res == COMM_SUCCESS and err == 0:
+                self.get_logger().info(f"ID {sid}: LOCKED & SMOOTHED")
+                self.feedback_read_sync.addParam(sid)
             else:
-                self.vel_sync.addParam(sid, val)
-
-        if self.pos_sync: self.pos_sync.txPacket()
-        if self.vel_sync: self.vel_sync.txPacket()
-        self.pos_sync.clearParam()
-        self.vel_sync.clearParam()
-
-    def publish_feedback(self):
-        if not self.is_configured: return
-
-        dxl_comm_result = self.feedback_read_sync.txRxPacket()
-        if dxl_comm_result != COMM_SUCCESS: return
-
-        feedback_data = []
-        for sid in self.active_ids:
-            if self.feedback_read_sync.isAvailable(sid, self.ADDR_PRESENT_CURR, 20):
-                curr_raw = self.feedback_read_sync.getData(sid, self.ADDR_PRESENT_CURR, 2)
-                vel_raw  = self.feedback_read_sync.getData(sid, self.ADDR_PRESENT_VEL, 4)
-                pos_raw  = self.feedback_read_sync.getData(sid, self.ADDR_PRESENT_POS, 4)
-                volt_raw = self.feedback_read_sync.getData(sid, self.ADDR_PRESENT_VOLT, 2)
-
-                current_amps = float(ctypes.c_int16(curr_raw).value) * 0.001
-                velocity_rads = float(cast_to_int32(vel_raw)) * self.VEL_UNIT_TO_RADS
-                position_rad = float(cast_to_int32(pos_raw)) / self.TICKS_PER_RAD
-                voltage_v = float(volt_raw) * 0.1
-                mode = self.id_modes[sid]
-
-                feedback_data.extend([float(sid), mode, position_rad, velocity_rads, current_amps, voltage_v])
-
-        if feedback_data:
-            msg = Float32MultiArray()
-            msg.data = feedback_data
-            self.feedback_pub.publish(msg)
+                self.get_logger().error(f"ID {sid}: SETUP FAIL")
+            
+        self.is_configured = True
+        self.is_configuring = False
 
     def destroy_node(self):
-        if self.is_configured:
-            for sid in self.active_ids:
+        for sid in self.active_ids:
+            try:
                 self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 0)
+            except: pass
         self.port.closePort()
         super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
     node = Dynamixcel_WX430_T200_interface()
-    
-    # --- Multi-threaded Executor ---
-    executor = MultiThreadedExecutor()
-    executor.add_node(node)
-    
     try:
-        executor.spin()
-    except KeyboardInterrupt:
-        pass
+        rclpy.spin(node)
+    except KeyboardInterrupt: pass
     finally:
         node.destroy_node()
         rclpy.shutdown()

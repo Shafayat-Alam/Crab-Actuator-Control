@@ -11,7 +11,6 @@ class Crab(Node):
         self.motion_pub = self.create_publisher(String, 'motion_cmd', 10)
         self.cmd_sub = self.create_subscription(String, 'robot_cmd', self.manual_cmd_cb, 10)
         
-        # Timer placeholder
         self.mission_timer = None
         self.get_logger().info("Gatekeeper Ready.")
 
@@ -48,7 +47,6 @@ class Crab(Node):
         self.motion_pub.publish(msg)
         self.get_logger().info(f"Published Cmd #{self.command_count}: {gait} for {duration:.2f}s")
 
-        # Instead of time.sleep, create a one-shot timer to reset the state
         if self.mission_timer is not None:
             self.mission_timer.cancel()
         

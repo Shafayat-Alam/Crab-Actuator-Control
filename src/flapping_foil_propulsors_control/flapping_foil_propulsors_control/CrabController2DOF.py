@@ -17,11 +17,10 @@ class CrabController2DOF(Node):
         }
         self.all_ids = [1.0, 2.0, 3.0, 4.0]
         self.OFFSETS = {1.0: 3.65, 2.0: 3.3, 3.0: 2.95, 4.0: 1.86}
-        self.LIMITS = {"min": 0.0, "max": 6.28}
 
         # --- Concurrency Setup ---
         self.cb_group = ReentrantCallbackGroup()
-        self.parity_queue = Queue(maxsize=1000) # Buffer to guarantee 1:1 telemetry
+        self.parity_queue = Queue(maxsize=1000) 
 
         # --- Publishers ---
         self.joint_pub = self.create_publisher(Float32MultiArray, 'joint_cmd', 1)
@@ -42,9 +41,8 @@ class CrabController2DOF(Node):
         time.sleep(1.5)
         self.torque_enable()
         
-        # Control Loop (1kHz) - Thread 1
+        # Loops
         self.control_timer = self.create_timer(0.001, self.update_motion_loop, callback_group=self.cb_group)
-        # Telemetry Loop (1kHz) - Thread 2 (Pulls from queue)
         self.telemetry_timer = self.create_timer(0.001, self.publish_telemetry, callback_group=self.cb_group)
 
     def feedback_cb(self, msg):
@@ -88,20 +86,19 @@ class CrabController2DOF(Node):
             else:
                 self.is_moving = False
 
-        # 1. Hardware Command
+        # 1. Hardware Command (Raw - No clamping)
         ids = sorted(goals.keys())
         final_goals = []
         for idx in ids:
-            phys_cmd = goals[idx] + self.OFFSETS.get(idx, 0.0)
-            safe_cmd = max(self.LIMITS["min"], min(self.LIMITS["max"], phys_cmd))
-            final_goals.append(safe_cmd)
-            goals[idx] = safe_cmd # Keep sanitized goal for telemetry
+            raw_phys_cmd = goals[idx] + self.OFFSETS.get(idx, 0.0)
+            final_goals.append(raw_phys_cmd)
+            goals[idx] = raw_phys_cmd 
 
         cmd_msg = Float32MultiArray()
         cmd_msg.data = [float(idx) for idx in ids] + [modes[idx] for idx in ids] + final_goals
         self.joint_pub.publish(cmd_msg)
 
-        # 2. Push snapshot to Parity Queue
+        # 2. Push to Parity Queue
         if not self.parity_queue.full():
             self.parity_queue.put({
                 "cmd_id": self.current_cmd_id,
@@ -111,7 +108,6 @@ class CrabController2DOF(Node):
             })
 
     def publish_telemetry(self):
-        """Pulls from Queue to ensure 1:1 parity without blocking control math."""
         if self.parity_queue.empty():
             return
 
