@@ -18,14 +18,21 @@ def generate_launch_description():
             package=package_name,
             executable='CrabController2DOF', 
             name='CrabController2DOF',
-            output='screen'
+            output='screen',
+            # --- Adding Parameters Here ---
+            parameters=[{
+                'operating_mode': 'position', # 'velocity' or 'position'
+                'kp': 0.0,
+                'ki': 0.0,
+                'kd': 0.0
+            }]
         ),
         
         # Hardware Interface
         Node(
             package=package_name,
-            executable='Dynamixcel_WX430_T200_interface', 
-            name='Dynamixcel_WX430_T200_interface',
+            executable='Dynamixcel_XW430_T200_interface', 
+            name='Dynamixcel_XW430_T200_interface',
             output='screen',
             respawn=True,
             respawn_delay=2.0

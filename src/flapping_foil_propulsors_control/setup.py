@@ -12,7 +12,6 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        # This tells ROS to copy your launch files into the install directory
         (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*.py'))),
     ],
     install_requires=['setuptools'],
@@ -28,7 +27,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'Dynamixcel_WX430_T200_interface = flapping_foil_propulsors_control.Dynamixcel_WX430_T200_interface:main',
+            'Dynamixcel_XW430_T200_interface = flapping_foil_propulsors_control.Dynamixcel_XW430_T200_interface:main',
             'CrabController2DOF = flapping_foil_propulsors_control.CrabController2DOF:main',
             'crab = flapping_foil_propulsors_control.crab:main',
         ],
