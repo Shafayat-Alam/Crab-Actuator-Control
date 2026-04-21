@@ -181,16 +181,26 @@ class CrabController2DOF(Node):
     # --- Sine Wave Primitive Library ---
     def forward_paddle(self, t, f, a):
         theta = 2 * math.pi * f * t
-        return {"roll": 1.5708 * math.sin(theta + (math.pi/2)), "pitch": a * math.sin(theta)}
+        result = {"roll": 1.5708 * math.sin(theta + (math.pi/2)), "pitch": a * math.sin(theta)}
+        return result
     
     def backward_paddle(self, t, f, a):
         theta = 2 * math.pi * f * t
-        return {"roll": 1.5708 * math.sin(theta - (math.pi/2)), "pitch": a * math.sin(theta)}
+        result = {"roll": 1.5708 * math.sin(theta - (math.pi/2)), "pitch": a * math.sin(theta)} 
+        return result
 
-    def forward_flap(self, t, f, a):  return {"roll": 1.5708, "pitch": a * math.sin(2 * math.pi * f * t)}
-    def backward_flap(self, t, f, a): return {"roll": -1.5708, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
-    def up_flap(self, t, f, a):       return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t)}
-    def down_flap(self, t, f, a):     return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
+    def forward_flap(self, t, f, a):  
+        result = {"roll": a * math.sin(2 * math.pi * f * t), "pitch": 0}
+        return result
+    def backward_flap(self, t, f, a): 
+        result = {"roll": -1.5708, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
+        return result
+    def up_flap(self, t, f, a):       
+        result = {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t)}
+        return result
+    def down_flap(self, t, f, a):     
+        result = {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
+        return result
 
     def torque_enable(self):
         msg = Float32MultiArray()

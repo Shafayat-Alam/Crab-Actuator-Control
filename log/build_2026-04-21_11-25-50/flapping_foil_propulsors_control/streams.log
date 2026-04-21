@@ -1,0 +1,26 @@
+[1.646s] Invoking command in '/home/shafa/flapping-propulsors-control/src/flapping_foil_propulsors_control': PYTHONPATH=/home/shafa/flapping-propulsors-control/build/flapping_foil_propulsors_control/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/flapping_foil_propulsors_control build --build-base /home/shafa/flapping-propulsors-control/build/flapping_foil_propulsors_control/build install --record /home/shafa/flapping-propulsors-control/build/flapping_foil_propulsors_control/install.log --single-version-externally-managed install_data
+[2.144s] running egg_info
+[2.185s] writing ../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info/PKG-INFO
+[2.186s] writing dependency_links to ../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info/dependency_links.txt
+[2.186s] writing entry points to ../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info/entry_points.txt
+[2.187s] writing requirements to ../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info/requires.txt
+[2.187s] writing top-level names to ../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info/top_level.txt
+[2.277s] reading manifest file '../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info/SOURCES.txt'
+[2.280s] writing manifest file '../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info/SOURCES.txt'
+[2.280s] running build
+[2.280s] running build_py
+[2.281s] copying flapping_foil_propulsors_control/Dynamixcel_XW430_T200_interface.py -> /home/shafa/flapping-propulsors-control/build/flapping_foil_propulsors_control/build/lib/flapping_foil_propulsors_control
+[2.283s] running install
+[2.294s] running install_lib
+[2.335s] copying /home/shafa/flapping-propulsors-control/build/flapping_foil_propulsors_control/build/lib/flapping_foil_propulsors_control/Dynamixcel_XW430_T200_interface.py -> /home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/python3.12/site-packages/flapping_foil_propulsors_control
+[2.336s] byte-compiling /home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/python3.12/site-packages/flapping_foil_propulsors_control/Dynamixcel_XW430_T200_interface.py to Dynamixcel_XW430_T200_interface.cpython-312.pyc
+[2.341s] running install_data
+[2.342s] running install_egg_info
+[2.383s] removing '/home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/python3.12/site-packages/flapping_foil_propulsors_control-0.0.0-py3.12.egg-info' (and everything under it)
+[2.384s] Copying ../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info to /home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/python3.12/site-packages/flapping_foil_propulsors_control-0.0.0-py3.12.egg-info
+[2.387s] running install_scripts
+[2.701s] Installing CrabController2DOF script to /home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/flapping_foil_propulsors_control
+[2.702s] Installing Dynamixcel_XW430_T200_interface script to /home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/flapping_foil_propulsors_control
+[2.703s] Installing crab script to /home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/flapping_foil_propulsors_control
+[2.704s] writing list of installed files to '/home/shafa/flapping-propulsors-control/build/flapping_foil_propulsors_control/install.log'
+[2.773s] Invoked command in '/home/shafa/flapping-propulsors-control/src/flapping_foil_propulsors_control' returned '0': PYTHONPATH=/home/shafa/flapping-propulsors-control/build/flapping_foil_propulsors_control/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/flapping_foil_propulsors_control build --build-base /home/shafa/flapping-propulsors-control/build/flapping_foil_propulsors_control/build install --record /home/shafa/flapping-propulsors-control/build/flapping_foil_propulsors_control/install.log --single-version-externally-managed install_data
