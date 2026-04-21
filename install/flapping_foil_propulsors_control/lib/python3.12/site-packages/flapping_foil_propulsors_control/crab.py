@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
+from collections import deque
 
 class Crab(Node):
     def __init__(self):
@@ -13,6 +14,9 @@ class Crab(Node):
         # Incremental counter to give every command a unique identification number
         self.command_count = 0 
 
+        # FIFO Queue to store incoming motion requests when the robot is busy
+        self.cmd_queue = deque()
+
         # --- ROS2 Interfaces ---
         # Publisher to send formatted gait strings to the hardware controller
         self.motion_pub = self.create_publisher(String, 'motion_cmd', 10)
@@ -22,32 +26,47 @@ class Crab(Node):
         
         # Placeholder for a timer that will track when a motion mission is finished
         self.mission_timer = None 
-        self.get_logger().info("Application Ready")
+        self.get_logger().info("Application Ready (Queue System Active)")
 
     def manual_cmd_cb(self, msg):
-        # Gatekeeper logic: ignore new commands if the robot is already moving
-        if self.state != "IDLE":
-            self.get_logger().warn(f"Busy! Current State: {self.state}")
+        """Buffers incoming raw commands and triggers processing if idle."""
+        # Add new command string to the end of the queue
+        self.cmd_queue.append(msg.data)
+        self.get_logger().info(f"Command queued. Total in queue: {len(self.cmd_queue)}")
+
+        # If the gatekeeper is IDLE, start processing the queue immediately
+        if self.state == "IDLE":
+            self.process_next_command()
+
+    def process_next_command(self):
+        """Pops the next command from the queue and executes it."""
+        if not self.cmd_queue:
+            self.state = "IDLE"
+            self.get_logger().info("All motions complete. Standing by.")
             return
 
+        raw_data = self.cmd_queue.popleft()
+        
         try:
             # Expected input format: "gait_name, cycles, frequency, amplitude"
-            # Example: "forward_paddle, 5.0, 1.0, 0.5"
-            parts = [p.strip() for p in msg.data.split(',')]
+            parts = [p.strip() for p in raw_data.split(',')]
             gait = parts[0]
             cycles = float(parts[1])
             freq = float(parts[2])
             amp = float(parts[3])
 
-            # Increment command ID for tracking and start execution
+            # Increment command ID and hand off to execution logic
             self.command_count += 1
             self.execute_mission(gait, cycles, freq, amp)
+            
         except Exception as e:
-            # Catch parsing errors (e.g., if user forgets a comma or sends text instead of numbers)
             self.get_logger().error(f"Command Parsing Error: {e}")
+            # If parsing fails, try to move to the next item in the queue
+            self.process_next_command()
 
     def execute_mission(self, gait, cycles, freq, amp):
-        # Lock the state to ACTIVE so no other commands interfere
+        """Formats hardware command, publishes it, and starts the duration timer."""
+        # Lock the state to ACTIVE to signal current motion execution
         self.state = "ACTIVE"
         
         # Physics calculation: time = total cycles / cycles per second (Hz)
@@ -60,28 +79,27 @@ class Crab(Node):
             f"cmd_id:[{self.command_count}]"
         )
 
-        # Publish the string to the hardware node
+        # Publish the string to the hardware engine
         msg = String()
         msg.data = motion_string
         self.motion_pub.publish(msg)
-        self.get_logger().info(f"Published Cmd #{self.command_count}: {gait} for {duration:.2f}s")
+        self.get_logger().info(f"Executing Cmd #{self.command_count}: {gait} ({duration:.2f}s)")
 
-        # Clear any existing timers just in case, then start a new one for the calculated duration
+        # Clear existing timers and set a new one for the calculated motion duration
         if self.mission_timer is not None:
             self.mission_timer.cancel()
         
-        # When the timer runs out, call reset_state_cb to unlock the node
+        # When duration expires, call the sequence handler
         self.mission_timer = self.create_timer(duration, self.reset_state_cb)
 
     def reset_state_cb(self):
-        # Stop the timer from repeating (timers in ROS2 repeat by default)
+        """Cleanup current timer and check queue for subsequent motions."""
         if self.mission_timer:
             self.mission_timer.cancel()
             self.mission_timer = None
             
-        # Unlock the gatekeeper so the robot can accept new commands
-        self.state = "IDLE"
-        self.get_logger().info("Motion complete. Ready for next command.")
+        # Instead of just going IDLE, check if there are more commands waiting
+        self.process_next_command()
 
 def main(args=None):
     rclpy.init(args=args)

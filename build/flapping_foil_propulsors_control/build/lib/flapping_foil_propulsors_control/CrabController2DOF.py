@@ -44,8 +44,8 @@ class CrabController2DOF(Node):
         self.prev_time = time.time()
 
         # --- Communication ---
-        # SingleThreadedExecutor handles callbacks sequentially, removing the need for 
-        # ReentrantCallbackGroups and preventing race conditions on 'start_time'.
+        # SingleThreadedExecutor handles callbacks sequentially 
+
         self.parity_queue = Queue(maxsize=1000) 
         
         # Publishers
@@ -53,7 +53,7 @@ class CrabController2DOF(Node):
         self.telemetry_pub = self.create_publisher(Float32MultiArray, 'telemetry', 10)
 
         # Subscriptions
-        # No callback_group assigned = defaults to the node's main execution group
+       
         self.motion_sub = self.create_subscription(String, 'motion_cmd', self.motion_cb, 10)
         self.feedback_sub = self.create_subscription(Float32MultiArray, 'joint_feedback', self.feedback_cb, 10)
 
@@ -70,8 +70,8 @@ class CrabController2DOF(Node):
         self.torque_enable()
         
         # --- High-Frequency Timers ---
-        # Using 1kHz. In SingleThreaded, these will interleave precisely.
-        self.control_timer = self.create_timer(0.001, self.update_motion_loop)
+        # Using 500 Hz. In SingleThreaded, these will interleave precisely.
+        self.control_timer = self.create_timer(0.002, self.update_motion_loop)
         self.telemetry_timer = self.create_timer(0.001, self.publish_telemetry)
 
     def feedback_cb(self, msg):
@@ -146,7 +146,7 @@ class CrabController2DOF(Node):
             self.last_error[sid] = error
             
             effort = (kp * error) + (ki * self.error_sum[sid]) + (kd * d_error)
-
+ 
             if mode_setting == 'position':
                 target_modes[sid] = 3.0
                 final_cmd_values.append(ideal_goal + effort + self.OFFSETS.get(sid, 0.0))
