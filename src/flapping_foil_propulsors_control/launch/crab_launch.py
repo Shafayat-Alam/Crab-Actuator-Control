@@ -31,7 +31,7 @@ def generate_launch_description():
         
         # Dynamixcel XW430-T200 Hardware Interface
        Node(
-            package='your_package_name', 
+            package=package_name, 
             executable='Dynamixcel_XW430_T200_interface', 
             name='servo_actuator',
             output='screen',
