@@ -1,91 +1,113 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.executors import SingleThreadedExecutor  # Changed from MultiThreaded
+from rclpy.executors import SingleThreadedExecutor
 from std_msgs.msg import Float32MultiArray, String
 import time
 import math
 from queue import Queue
 
+class PIDController:
+    """
+    Standard Parallel PID implementation for individual joint control.
+    Encapsulates state to prevent cross-talk between actuators.
+    """
+    def __init__(self, kp, ki, kd):
+        self.kp, self.ki, self.kd = kp, ki, kd
+        self.error_sum = 0.0
+        self.last_error = 0.0
+
+    def update(self, error, dt):
+        """Computes control effort based on instantaneous error and time delta."""
+        self.error_sum += error * dt
+        d_error = (error - self.last_error) / dt if dt > 0 else 0.0
+        self.last_error = error
+        return (self.kp * error) + (self.ki * self.error_sum) + (self.kd * d_error)
+
+    def reset(self):
+        """Zeroes integral and derivative terms to prevent windup on motion transitions."""
+        self.error_sum = 0.0
+        self.last_error = 0.0
+
 class CrabController2DOF(Node):
     """
-    High-level motion engine for 2DOF actuators.
-    Handles trajectory generation (Sine waves) and Closed-Loop PID control.
-    Supports both Position-Offset PID and Direct Velocity PID via ROS2 parameters.
-    
-    Optimized for Single-Threaded execution to ensure deterministic control timing.
+    Main Motion Engine for 2DOF Bio-inspired locomotion.
+    Handles trajectory generation, PID closed-loop control, and telemetry buffering.
     """
     def __init__(self):
         super().__init__('crab_motion_engine')
         
-        # --- ROS2 Parameter Definitions ---
+        # --- Parameter Declaration ---
         self.declare_parameter('operating_mode', 'velocity')
         self.declare_parameter('kp', 0.75)
         self.declare_parameter('ki', 0.05)
         self.declare_parameter('kd', 0.2)
 
-        # --- Hardware Configuration ---
+        # --- Hardware Mapping & Calibration ---
+        # Servo IDs and zero-offsets
         self.actuators = {
-            "left":  {"roll": 1.0, "pitch": 2.0},
-            "right": {"roll": 3.0, "pitch": 4.0}
+            "left":  {"roll": {"id": 1.0, "offset": 3.60}, "pitch": {"id": 2.0, "offset": 3.30}},
+            "right": {"roll": {"id": 3.0, "offset": 3.00}, "pitch": {"id": 4.0, "offset": 3.42}}
         }
-        self.all_ids = [1.0, 2.0, 3.0, 4.0]
-        
-        # Zero-point calibration offsets (Radians)
-        self.OFFSETS = {
-            self.actuators["left"]["roll"]:  3.60,
-            self.actuators["left"]["pitch"]: 3.3,
-            self.actuators["right"]["roll"]: 3.00,
-            self.actuators["right"]["pitch"]: 3.42
-        }   
 
-        # --- PID Control State ---
-        self.error_sum = {sid: 0.0 for sid in self.all_ids}
-        self.last_error = {sid: 0.0 for sid in self.all_ids}
-        self.prev_time = time.time()
+        self.all_ids = []
+        self.OFFSETS = {}
+        self.id_map = {} 
 
-        # --- Communication ---
-        # SingleThreadedExecutor handles callbacks sequentially 
+        # Build dynamic lookup tables for runtime efficiency
+        for side, joints in self.actuators.items():
+            self.id_map[side] = {}
+            for joint, config in joints.items():
+                sid = config["id"]
+                self.all_ids.append(sid)
+                self.OFFSETS[sid] = config["offset"]
+                self.id_map[side][joint] = sid
 
-        self.parity_queue = Queue(maxsize=1000) 
-        
-        # Publishers
+        # Initialize PID controllers for each discovered ID
+        kp, ki, kd = [self.get_parameter(n).value for n in ['kp', 'ki', 'kd']]
+        self.pids = {sid: PIDController(kp, ki, kd) for sid in self.all_ids}
+
+        # --- ROS Communication Infrastructure ---
+        self.parity_queue = Queue(maxsize=1000)
         self.joint_pub = self.create_publisher(Float32MultiArray, 'joint_cmd', 1)
         self.telemetry_pub = self.create_publisher(Float32MultiArray, 'telemetry', 10)
-
-        # Subscriptions
-       
         self.motion_sub = self.create_subscription(String, 'motion_cmd', self.motion_cb, 10)
         self.feedback_sub = self.create_subscription(Float32MultiArray, 'joint_feedback', self.feedback_cb, 10)
 
-        # --- Motion State ---
+        # --- Control State Variables ---
         self.current_cmd_id = 0.0
         self.full_feedback = {sid: {"pos": 0.0, "vel": 0.0, "curr": 0.0, "volt": 0.0} for sid in self.all_ids}
         self.active_motions = {}
         self.is_moving = False
         self.total_duration = 0.0
         self.start_time = 0.0
+        self.prev_time = time.time()
         
-        # Initialization Delay
+        # Hardware handshake delay
         time.sleep(1.5)
         self.torque_enable()
         
-        # --- High-Frequency Timers ---
-        # Using 500 Hz. In SingleThreaded, these will interleave precisely.
-        self.control_timer = self.create_timer(0.002, self.update_motion_loop)
-        self.telemetry_timer = self.create_timer(0.001, self.publish_telemetry)
+        # Deterministic timing loops
+        self.control_timer = self.create_timer(0.0025, self.update_motion_loop) # 400Hz
+        self.telemetry_timer = self.create_timer(0.0025, self.publish_telemetry)
+
+    def broadcast_drive_cmd(self, ids, modes, values):
+        """Helper to format and dispatch raw motor commands to the hardware interface."""
+        msg = Float32MultiArray()
+        msg.data = [float(sid) for sid in ids] + [float(m) for m in modes] + [float(v) for v in values]
+        self.joint_pub.publish(msg)
 
     def feedback_cb(self, msg):
-        """Unpacks hardware feedback. Runs sequentially between control loops."""
+        """Unpacks high-frequency telemetry from the hardware interface."""
         for i in range(0, len(msg.data), 6):
             sid = msg.data[i]
             if sid in self.full_feedback:
                 self.full_feedback[sid].update({
-                    "pos":  msg.data[i+2], "vel":  msg.data[i+3],
+                    "pos": msg.data[i+2], "vel": msg.data[i+3],
                     "curr": msg.data[i+4], "volt": msg.data[i+5]
                 })
 
     def motion_cb(self, msg):
-        """Parses motion commands and resets start_time safely on the main thread."""
+        """Parses motion strings and initializes trajectory counters."""
         try:
             parts = msg.data.lower().replace(' ', '').split(']')
             data = {p.split(':[')[0]: p.split(':[')[1].split(',') for p in parts if ':[' in p}
@@ -94,137 +116,110 @@ class CrabController2DOF(Node):
             freq, cycles = float(data['freqs'][0]), float(data['cycles'][0])
             
             self.total_duration = cycles / freq
-            self.start_time = time.time() # Reset clock for new motion
-            self.active_motions = {side: {"func": data['motions'][i], "mode": float(data['modes'][i]), 
-                                   "freq": freq, "amp": float(data['amps'][i])} 
-                                   for i, side in enumerate(data['actuators'])}
+            self.start_time = time.time()
+            self.active_motions = {
+                side: {
+                    "func": data['motions'][i], 
+                    "mode": float(data['modes'][i]), 
+                    "freq": freq, 
+                    "amp": float(data['amps'][i])
+                } for i, side in enumerate(data['actuators'])
+            }
+            # Clear historical error to prevent jumping on new command
+            for pid in self.pids.values(): pid.reset()
             self.is_moving = True
-            self.get_logger().info(f"New Motion Loaded: ID {self.current_cmd_id}")
         except Exception as e:
-            self.get_logger().error(f"Failed to parse motion command: {e}")
+            self.get_logger().error(f"Command Parse Failure: {e}")
 
     def update_motion_loop(self):
-        """
-        Primary Real-Time Task (Sequential).
-        Updates trajectory and executes PID control step.
-        """
+        """Primary real-time control thread. Generates setpoints and runs PID."""
         now = time.time()
         dt = now - self.prev_time
         self.prev_time = now
 
         goals = {sid: 0.0 for sid in self.all_ids}
-        target_modes = {sid: 3.0 for sid in self.all_ids}
-        
-        mode_setting = self.get_parameter('operating_mode').value
-        kp, ki, kd = self.get_parameter('kp').value, self.get_parameter('ki').value, self.get_parameter('kd').value
+        mode_param = self.get_parameter('operating_mode').value
 
-        # --- Trajectory Step ---
+        # Step 1: Trajectory Generation
         if self.is_moving:
-            elapsed = time.time() - self.start_time
+            elapsed = now - self.start_time
             if elapsed < self.total_duration:
                 for side, p in self.active_motions.items():
+                    # Dynamic dispatch of primitive motion functions
                     res = getattr(self, p["func"])(elapsed, p["freq"], p["amp"])
-                    goals[self.actuators[side]["roll"]] = res["roll"]
-                    goals[self.actuators[side]["pitch"]] = res["pitch"]
-                    target_modes[self.actuators[side]["roll"]] = p["mode"]
-                    target_modes[self.actuators[side]["pitch"]] = p["mode"]
-                self.get_logger().info(f'time: {elapsed}')
+                    goals[self.id_map[side]["roll"]] = res["roll"]
+                    goals[self.id_map[side]["pitch"]] = res["pitch"]
             else:
-                self.is_moving = False 
+                self.is_moving = False
 
-        ids = sorted(goals.keys())
-        final_cmd_values = []
-        
-        # --- PID Loop per Actuator ---
+        # Step 2: PID and Calibration Offset Application
+        ids = sorted(self.all_ids)
+        final_values, target_modes = [], []
+
         for sid in ids:
-            actual_pos = self.full_feedback[sid]["pos"]
-            ideal_goal = goals[sid]
-            error = ideal_goal - actual_pos
-
-            self.error_sum[sid] += error * dt 
-            d_error = (error - self.last_error[sid]) / dt if dt > 0 else 0.0 
-            self.last_error[sid] = error
-            
-            effort = (kp * error) + (ki * self.error_sum[sid]) + (kd * d_error)
- 
-            if mode_setting == 'position':
-                target_modes[sid] = 3.0
-                final_cmd_values.append(ideal_goal + effort + self.OFFSETS.get(sid, 0.0))
+            effort = self.pids[sid].update(goals[sid] - self.full_feedback[sid]["pos"], dt)
+            if mode_param == 'position':
+                target_modes.append(3.0) # Hardware-level Position Control
+                final_values.append(goals[sid] + effort + self.OFFSETS.get(sid, 0.0))
             else:
-                target_modes[sid] = 1.0
-                final_cmd_values.append(effort)
+                target_modes.append(1.0) # Hardware-level Velocity Control
+                final_values.append(effort)
 
-        # Dispatch MultiArray
-        cmd_msg = Float32MultiArray()
-        cmd_msg.data = [float(sid) for sid in ids] + [target_modes[sid] for sid in ids] + final_cmd_values
-        self.joint_pub.publish(cmd_msg)
+        self.broadcast_drive_cmd(ids, target_modes, final_values)
 
-        # Buffer data for telemetry
+        # Step 3: Buffer state for telemetry (non-blocking)
         if not self.parity_queue.full():
             self.parity_queue.put({
-                "cmd_id": self.current_cmd_id, "ts": now,
-                "goals": goals, "feedback": {k: v.copy() for k, v in self.full_feedback.items()}
+                "id": self.current_cmd_id, "ts": now, "goals": goals, 
+                "fb": {k: v.copy() for k, v in self.full_feedback.items()}
             })
 
     def publish_telemetry(self):
-        """Flushes parity queue. In Single-Threaded, this runs safely between control steps."""
+        """Asynchronously flushes the state buffer to the telemetry topic."""
         if self.parity_queue.empty(): return
-        data = self.parity_queue.get()
-        telem_msg = Float32MultiArray()
-        telem_data = [data["cmd_id"], data["ts"]]
+        d = self.parity_queue.get()
+        msg = Float32MultiArray()
+        payload = [d["id"], d["ts"]]
         for sid in sorted(self.all_ids):
-            f = data["feedback"][sid]
-            telem_data.extend([data["goals"][sid], f["pos"], f["vel"], f["curr"], f["volt"]])
-        telem_msg.data = telem_data
-        self.telemetry_pub.publish(telem_msg)
+            f = d["fb"][sid]
+            payload.extend([d["goals"][sid], f["pos"], f["vel"], f["curr"], f["volt"]])
+        msg.data = payload
+        self.telemetry_pub.publish(msg)
 
-    # --- Sine Wave Primitive Library ---
+    # --- Locomotion Primitives (Sine-based) ---
     def forward_paddle(self, t, f, a):
         theta = 2 * math.pi * f * t
-        result = {"roll": 1.5708 * math.sin(theta + (math.pi/2)), "pitch": a * math.sin(theta)}
-        return result
+        return {"roll": 1.5708 * math.sin(theta + (math.pi/2)), "pitch": a * math.sin(theta)}
     
     def backward_paddle(self, t, f, a):
         theta = 2 * math.pi * f * t
-        result = {"roll": 1.5708 * math.sin(theta - (math.pi/2)), "pitch": a * math.sin(theta)} 
-        return result
+        return {"roll": 1.5708 * math.sin(theta - (math.pi/2)), "pitch": a * math.sin(theta)}
 
-    def forward_flap(self, t, f, a):  
-        result = {"roll": a * math.sin(2 * math.pi * f * t), "pitch": 0}
-        return result
-    def backward_flap(self, t, f, a): 
-        result = {"roll": -1.5708, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
-        return result
-    def up_flap(self, t, f, a):       
-        result = {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t)}
-        return result
-    def down_flap(self, t, f, a):     
-        result = {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
-        return result
+    def forward_flap(self, t, f, a):  return {"roll": 1.5708, "pitch": a * math.sin(2 * math.pi * f * t)}
+    def backward_flap(self, t, f, a): return {"roll": -1.5708, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
+    def up_flap(self, t, f, a):       return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t)}
+    def down_flap(self, t, f, a):     return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
 
     def torque_enable(self):
-        msg = Float32MultiArray()
-        msg.data = [1.0, 2.0, 3.0, 4.0] + [-1.0]*4 + [0.0]*4
-        self.joint_pub.publish(msg)
+        """Commands hardware interface to lock motor shafts."""
+        ids = sorted(self.all_ids)
+        self.broadcast_drive_cmd(ids, [-1.0]*len(ids), [0.0]*len(ids))
 
     def destroy_node(self):
-        msg = Float32MultiArray()
-        msg.data = [1.0, 2.0, 3.0, 4.0] + [0.0]*4 + [0.0]*4 
-        self.joint_pub.publish(msg)
+        """Safe shutdown: releases torque and zeroes goal states."""
+        self.get_logger().info("Shutting down: Releasing torque...")
+        ids = sorted(self.all_ids)
+        self.broadcast_drive_cmd(ids, [0.0]*len(ids), [0.0]*len(ids))
         super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
     node = CrabController2DOF()
-    
-    # Using SingleThreadedExecutor to eliminate time-jitter and race conditions
     executor = SingleThreadedExecutor()
     executor.add_node(node)
-    
     try:
         executor.spin()
-    except KeyboardInterrupt:
-        pass
+    except KeyboardInterrupt: pass
     finally:
         node.destroy_node()
         rclpy.shutdown()

@@ -1,6 +1,0 @@
-readable_time,data
-00:09.637,"actuators:[left,right] motions:[up_flap,up_flap] modes:[3.0,3.0] freqs:[0.5,0.5] amps:[0.3,0.3] cycles:[4.0,4.0] cmd_id:[1]"
-00:17.637,"actuators:[left,right] motions:[up_flap,up_flap] modes:[3.0,3.0] freqs:[1.0,1.0] amps:[0.6,0.6] cycles:[4.0,4.0] cmd_id:[2]"
-00:21.638,"actuators:[left,right] motions:[up_flap,up_flap] modes:[3.0,3.0] freqs:[1.5,1.5] amps:[0.9,0.9] cycles:[4.0,4.0] cmd_id:[3]"
-00:24.306,"actuators:[left,right] motions:[up_flap,up_flap] modes:[3.0,3.0] freqs:[2.0,2.0] amps:[1.2,1.2] cycles:[4.0,4.0] cmd_id:[4]"
-00:26.307,"actuators:[left,right] motions:[up_flap,up_flap] modes:[3.0,3.0] freqs:[2.5,2.5] amps:[1.5,1.5] cycles:[4.0,4.0] cmd_id:[5]"

@@ -1,6 +1,0 @@
-readable_time,data
-00:11.611,"actuators:[left,right] motions:[forward_flap,forward_flap] modes:[3.0,3.0] freqs:[0.5,0.5] amps:[0.3,0.3] cycles:[4.0,4.0] cmd_id:[11]"
-00:19.611,"actuators:[left,right] motions:[forward_flap,forward_flap] modes:[3.0,3.0] freqs:[1.0,1.0] amps:[0.6,0.6] cycles:[4.0,4.0] cmd_id:[12]"
-00:23.612,"actuators:[left,right] motions:[forward_flap,forward_flap] modes:[3.0,3.0] freqs:[1.5,1.5] amps:[0.9,0.9] cycles:[4.0,4.0] cmd_id:[13]"
-00:26.280,"actuators:[left,right] motions:[forward_flap,forward_flap] modes:[3.0,3.0] freqs:[2.0,2.0] amps:[1.2,1.2] cycles:[4.0,4.0] cmd_id:[14]"
-00:28.281,"actuators:[left,right] motions:[forward_flap,forward_flap] modes:[3.0,3.0] freqs:[2.5,2.5] amps:[1.5,1.5] cycles:[4.0,4.0] cmd_id:[15]"
