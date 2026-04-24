@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Float32MultiArray
 from collections import deque
+import time
 
 class Crab(Node):
     def __init__(self):
@@ -10,19 +11,17 @@ class Crab(Node):
         self.state = "IDLE" 
         self.command_count = 0 
         self.cmd_queue = deque()
-        self.last_telemetry_ts = self.get_clock().now()
+        
+        # Tracking variables for conditional completion
+        self.current_cmd_duration = 0.0
+        self.current_cmd_start_time = 0.0
 
         # --- ROS2 Interfaces ---
         self.motion_pub = self.create_publisher(String, 'motion_cmd', 10)
         self.cmd_sub = self.create_subscription(String, 'robot_cmd', self.manual_cmd_cb, 10)
-        
-        # New: Listen to telemetry to detect motion completion
         self.tele_sub = self.create_subscription(Float32MultiArray, 'telemetry', self.telemetry_cb, 10)
         
-        # Watchdog: Checks if telemetry has stopped for the current command
-        self.watchdog = self.create_timer(0.1, self.completion_watchdog)
-        
-        self.get_logger().info("Gatekeeper Ready (Telemetry-Feedback Mode)")
+        self.get_logger().info("Gatekeeper Ready (Event-Driven Mode)")
 
     def manual_cmd_cb(self, msg):
         self.cmd_queue.append(msg.data)
@@ -42,7 +41,10 @@ class Crab(Node):
             self.command_count += 1
             self.state = "ACTIVE"
             
-            # Construct hardware command
+            # Calculate expected duration to use in telemetry check
+            self.current_cmd_duration = cycles / freq
+            self.current_cmd_start_time = time.time()
+            
             motion_string = (
                 f"actuators:[left,right] motions:[{gait},{gait}] modes:[3.0,3.0] "
                 f"freqs:[{freq},{freq}] amps:[{amp},{amp}] cycles:[{cycles},{cycles}] "
@@ -50,7 +52,6 @@ class Crab(Node):
             )
 
             self.motion_pub.publish(String(data=motion_string))
-            self.last_telemetry_ts = self.get_clock().now() # Reset watchdog anchor
             self.get_logger().info(f"Sent Cmd #{self.command_count}: {gait}")
             
         except Exception as e:
@@ -58,21 +59,21 @@ class Crab(Node):
             self.process_next_command()
 
     def telemetry_cb(self, msg):
-        """Update timestamp if telemetry matches current active command ID."""
+        """
+        Checks completion conditionally based on incoming telemetry packets.
+        """
         if self.state == "ACTIVE":
             incoming_id = msg.data[0]
-            if incoming_id == float(self.command_count):
-                self.last_telemetry_ts = self.get_clock().now()
-
-    def completion_watchdog(self):
-        """Detects completion when telemetry stream for current ID goes silent."""
-        if self.state == "ACTIVE":
-            elapsed = (self.get_clock().now() - self.last_telemetry_ts).nanoseconds / 1e9
             
-            # If no matching telemetry for > 200ms, controller has finished trajectory
-            if elapsed > 0.2:
-                self.get_logger().info(f"Cmd #{self.command_count} finished.")
-                self.process_next_command()
+            # Check 1: Ensure we are looking at the telemetry for the active command
+            if incoming_id == float(self.command_count):
+                elapsed = time.time() - self.current_cmd_start_time
+                
+                # Check 2: Conditional completion check
+                # We add a small buffer (0.1s) to ensure the controller has finished its last loop
+                if elapsed > (self.current_cmd_duration + 0.1):
+                    self.get_logger().info(f"Cmd #{self.command_count} finished (Detected via Telemetry).")
+                    self.process_next_command()
 
 def main(args=None):
     rclpy.init(args=args)

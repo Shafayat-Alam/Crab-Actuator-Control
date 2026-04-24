@@ -19,22 +19,26 @@ def generate_launch_description():
             executable='CrabController2DOF', 
             name='CrabController2DOF',
             output='screen',
-            # --- Adding Parameters Here ---
             parameters=[{
                 'operating_mode': 'position', # 'velocity' or 'position'
                 'kp': 0.0,
                 'ki': 0.0,
-                'kd': 0.0
+                'kd': 0.0,
+                'control_period': 0.002,    
+                'telemetry_period': 0.004    
             }]
         ),
         
         # Dynamixcel XW430-T200 Hardware Interface
-        Node(
-            package=package_name,
+       Node(
+            package='your_package_name', 
             executable='Dynamixcel_XW430_T200_interface', 
-            name='Dynamixcel_XW430_T200_interface',
+            name='servo_actuator',
             output='screen',
-            respawn=True,
-            respawn_delay=2.0
+            parameters=[{
+                'baudrate': 9600,
+                'control_loop_rate': 0.001,
+                'current_limit': 800
+            }]
         )
     ])

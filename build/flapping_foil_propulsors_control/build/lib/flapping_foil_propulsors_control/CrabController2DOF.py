@@ -41,6 +41,12 @@ class CrabController2DOF(Node):
         self.declare_parameter('kp', 0.75)
         self.declare_parameter('ki', 0.05)
         self.declare_parameter('kd', 0.2)
+        self.declare_parameter('control_period', 0.002) # Default 500Hz
+        self.declare_parameter('telemetry_period', 0.004) # Default 250Hz
+
+        # Fetch timing values
+        control_period = self.get_parameter('control_period').value
+        telemetry_period = self.get_parameter('telemetry_period').value
 
         # --- Hardware Mapping & Calibration ---
         # Servo IDs and zero-offsets
@@ -88,7 +94,7 @@ class CrabController2DOF(Node):
         
         # Deterministic timing loops
         self.control_timer = self.create_timer(0.0025, self.update_motion_loop) #400Hz
-        self.telemetry_timer = self.create_timer(0.0025, self.publish_telemetry) #400Hz
+        self.telemetry_timer = self.create_timer(0.025, self.publish_telemetry) 
 
     def broadcast_drive_cmd(self, ids, modes, values):
         """Helper to format and dispatch raw motor commands to the hardware interface."""
@@ -191,22 +197,14 @@ class CrabController2DOF(Node):
         ids = sorted(self.all_ids)
         self.broadcast_drive_cmd(ids, [-1.0]*len(ids), [0.0]*len(ids))
     
-    def calibration(self):
+    def calibration(self, t=0, f=0, a=0):
         """
-        Hard reset: Commands all servos to neutral (0.0) positions.
-        Used as a telemetry marker and physical 'zeroing' between test sequences.
+        Standardized calibration gait. 
+        Instead of touching hardware, we return a 'Safe' static position.
         """
-        self.get_logger().info("Executing Calibration: Resetting all servos to 0.0")
-        
-        # Identify all active servo IDs
-        ids = sorted(list(self.all_ids))
-        
-        # Generate zeroed goals and velocities
-        zero_positions = [0.0] * len(ids)
-        zero_velocities = [0.0] * len(ids)
-        
-        # Broadcast immediately to clear any existing offsets
-        self.broadcast_drive_cmd(ids, zero_positions, zero_velocities)
+        # Return all zeros (or whatever your neutral 'home' position is)
+        # This keeps the logic consistent with your other gaits
+        return {"roll": 0.0, "pitch": 0.0}
 
     # --- Locomotion Primitives (Sine-based) ---
     def forward_paddle(self, t, f, a):

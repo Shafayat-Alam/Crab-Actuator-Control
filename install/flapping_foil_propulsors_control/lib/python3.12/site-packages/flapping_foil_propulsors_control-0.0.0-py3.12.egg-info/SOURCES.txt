@@ -24,6 +24,3 @@ flapping_foil_propulsors_control/dynamixel_sdk/protocol2_packet_handler.py
 flapping_foil_propulsors_control/dynamixel_sdk/robotis_def.py
 launch/crab_launch.py
 resource/flapping_foil_propulsors_control
-test/test_copyright.py
-test/test_flake8.py
-test/test_pep257.py
