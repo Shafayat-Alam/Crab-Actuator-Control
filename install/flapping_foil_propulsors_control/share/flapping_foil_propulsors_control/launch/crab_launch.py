@@ -28,7 +28,7 @@ def generate_launch_description():
             }]
         ),
         
-        # Hardware Interface
+        # Dynamixcel XW430-T200 Hardware Interface
         Node(
             package=package_name,
             executable='Dynamixcel_XW430_T200_interface', 

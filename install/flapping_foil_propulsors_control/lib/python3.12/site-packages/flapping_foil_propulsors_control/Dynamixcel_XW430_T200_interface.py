@@ -49,8 +49,8 @@ class Dynamixel_XW430_T200_interface(Node):
         self.feedback_pub = self.create_publisher(Float32MultiArray, 'joint_feedback', 1)
         self.joint_sub = self.create_subscription(Float32MultiArray, 'joint_cmd', self.ros_cb, 1)
 
-        # 0.001 (1000Hz) 
-        self.control_timer = self.create_timer(0.001, self.hardware_loop)
+        # 0.002 (500Hz) 
+        self.control_timer = self.create_timer(0.002, self.hardware_loop)
         self.get_logger().info("XW430 Interface Node Online (1.0 Mbps @ 1000Hz).")
 
     def ros_cb(self, msg):

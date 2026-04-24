@@ -87,8 +87,8 @@ class CrabController2DOF(Node):
         self.torque_enable()
         
         # Deterministic timing loops
-        self.control_timer = self.create_timer(0.0025, self.update_motion_loop) # 400Hz
-        self.telemetry_timer = self.create_timer(0.0025, self.publish_telemetry)
+        self.control_timer = self.create_timer(0.0025, self.update_motion_loop) #400Hz
+        self.telemetry_timer = self.create_timer(0.0025, self.publish_telemetry) #400Hz
 
     def broadcast_drive_cmd(self, ids, modes, values):
         """Helper to format and dispatch raw motor commands to the hardware interface."""
@@ -186,25 +186,234 @@ class CrabController2DOF(Node):
         msg.data = payload
         self.telemetry_pub.publish(msg)
 
-    # --- Locomotion Primitives (Sine-based) ---
-    def forward_paddle(self, t, f, a):
-        theta = 2 * math.pi * f * t
-        return {"roll": 1.5708 * math.sin(theta + (math.pi/2)), "pitch": a * math.sin(theta)}
-    
-    def backward_paddle(self, t, f, a):
-        theta = 2 * math.pi * f * t
-        return {"roll": 1.5708 * math.sin(theta - (math.pi/2)), "pitch": a * math.sin(theta)}
-
-    def forward_flap(self, t, f, a):  return {"roll": 1.5708, "pitch": a * math.sin(2 * math.pi * f * t)}
-    def backward_flap(self, t, f, a): return {"roll": -1.5708, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
-    def up_flap(self, t, f, a):       return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t)}
-    def down_flap(self, t, f, a):     return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
-
     def torque_enable(self):
         """Commands hardware interface to lock motor shafts."""
         ids = sorted(self.all_ids)
         self.broadcast_drive_cmd(ids, [-1.0]*len(ids), [0.0]*len(ids))
+    
+    def calibration(self):
+        """
+        Hard reset: Commands all servos to neutral (0.0) positions.
+        Used as a telemetry marker and physical 'zeroing' between test sequences.
+        """
+        self.get_logger().info("Executing Calibration: Resetting all servos to 0.0")
+        
+        # Identify all active servo IDs
+        ids = sorted(list(self.all_ids))
+        
+        # Generate zeroed goals and velocities
+        zero_positions = [0.0] * len(ids)
+        zero_velocities = [0.0] * len(ids)
+        
+        # Broadcast immediately to clear any existing offsets
+        self.broadcast_drive_cmd(ids, zero_positions, zero_velocities)
 
+    # --- Locomotion Primitives (Sine-based) ---
+    def forward_paddle(self, t, f, a):
+        # What it does: Coordinates roll (90-degree shifted sine) and pitch (sine) for an elliptical stroke.
+        # What it tests: Multi-axis coordination, peak torque during rowing, and thrust efficiency.
+        theta = 2 * math.pi * f * t
+        return {"roll": 1.5708 * math.sin(theta + (math.pi/2)), "pitch": a * math.sin(theta)}
+
+    def backward_paddle(self, t, f, a):
+        # What it does: Reverses the phase of the paddle trajectory.
+        # What it tests: Symmetry of the hydrodynamic thrust and reverse-torque consistency.
+        theta = 2 * math.pi * f * t
+        return {"roll": 1.5708 * math.sin(theta - (math.pi/2)), "pitch": a * math.sin(theta)}
+
+    def forward_flap(self, t, f, a):  
+        # What it does: Locks roll at a 90-degree angle while oscillating pitch.
+        # What it tests: Pure pitch authority at a fixed hydrodynamic offset.
+        return {"roll": 1.5708, "pitch": a * math.sin(2 * math.pi * f * t)}
+
+    def backward_flap(self, t, f, a): 
+        # What it does: Locks roll at a -90-degree angle while oscillating pitch.
+        # What it tests: Performance and load handling in the reverse orientation.
+        return {"roll": -1.5708, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
+
+    def up_flap(self, t, f, a):       
+        # What it does: Keeps roll neutral (0.0) while oscillating pitch.
+        # What it tests: Vertical lift generation and vertical symmetry.
+        return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t)}
+
+    def down_flap(self, t, f, a):     
+        # What it does: Neutral roll with pitch oscillation starting in the opposite direction.
+        # What it tests: Downward thrust capacity and response to inverted gravity/buoyancy loads.
+        return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
+
+    # --- Locomotion Primitives (Sine-based) ---
+
+    def left_roll_sine(self, t, f, a):
+        # What it does: Oscillates only the roll axis with a sine wave.
+        # What it tests: Single-axis roll bandwidth, current draw, and serial update speed.
+        return {"roll": a * math.sin(2 * math.pi * f * t), "pitch": 0.0}
+
+    def right_roll_sine(self, t, f, a):
+        # What it does: Oscillates only the roll axis with a sine wave.
+        # What it tests: Roll axis parity and performance consistency across flippers.
+        return {"roll": a * math.sin(2 * math.pi * f * t), "pitch": 0.0}
+
+    def left_pitch_sine(self, t, f, a):
+        # What it does: Oscillates only the pitch axis with a sine wave.
+        # What it tests: Single-axis pitch resolution and torque against water resistance.
+        return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t)}
+
+    def right_pitch_sine(self, t, f, a):
+        # What it does: Oscillates only the pitch axis with a sine wave.
+        # What it tests: Pitch axis parity and performance consistency across flippers.
+        return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t)}
+
+    def symmetric_roll_sine(self, t, f, a):
+        # What it does: Synchronized sine oscillation of roll.
+        # What it tests: Total power rail stability under simultaneous roll motor load.
+        return {"roll": a * math.sin(2 * math.pi * f * t), "pitch": 0.0}
+
+    def asymmetric_roll_sine(self, t, f, a):
+        # What it does: Out-of-phase oscillation of the roll motors.
+        # What it tests: Frame torsional stress and differential current draw.
+        return {"roll": a * math.sin(2 * math.pi * f * t), "pitch": 0.0}
+
+    def symmetric_pitch_sine(self, t, f, a):
+        # What it does: Synchronized sine oscillation of pitch.
+        # What it tests: Peak vertical current draw and pitch-sync precision.
+        return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t)}
+
+    def asymmetric_pitch_sine(self, t, f, a):
+        # What it does: Out-of-phase oscillation of the pitch motors.
+        # What it tests: Chassis sculling/rotation stability and vibration coupling.
+        return {"roll": 0.0, "pitch": a * math.sin(2 * math.pi * f * t)}
+
+    def left_flipper_coupled(self, t, f, a):
+        # What it does: Combines roll (cosine) and pitch (sine) on a single flipper.
+        # What it tests: Intra-flipper mechanical interference and complex trajectory control.
+        return {"roll": 0.5 * a * math.cos(2 * math.pi * f * t), "pitch": a * math.sin(2 * math.pi * f * t)}
+
+    def right_flipper_coupled(self, t, f, a):
+        # What it does: Combines roll (cosine) and pitch (sine) on a single flipper.
+        # What it tests: Parity for complex elliptical tip paths.
+        return {"roll": 0.5 * a * math.cos(2 * math.pi * f * t), "pitch": a * math.sin(2 * math.pi * f * t)}
+
+    def diagonal_test_a(self, t, f, a):
+        # What it does: Syncs roll and pitch across diagonal axes.
+        # What it tests: Cross-chassis communication latency and electrical cross-talk.
+        return {"roll": a * math.sin(2 * math.pi * f * t), "pitch": a * math.sin(2 * math.pi * f * t)}
+
+    def diagonal_test_b(self, t, f, a):
+        # What it does: Syncs roll and pitch across opposite diagonal axes.
+        # What it tests: Reliability of the serial bus under non-standard motor pairs.
+        return {"roll": a * math.sin(2 * math.pi * f * t), "pitch": a * math.sin(2 * math.pi * f * t)}
+
+    def four_axis_quadrature(self, t, f, a):
+        # What it does: Shifts phase sequentially between axes.
+        # What it tests: Serial bus packet jitter and traveling wave propagation.
+        return {"roll": a * math.sin(2 * math.pi * f * t), "pitch": a * math.sin(2 * math.pi * f * t + (math.pi / 2))}
+
+    def reverse_quadrature(self, t, f, a):
+        # What it does: Shifts phase sequentially in reverse order.
+        # What it tests: Communication directionality and packet sequencing.
+        return {"roll": a * math.sin(2 * math.pi * f * t + math.pi), "pitch": a * math.sin(2 * math.pi * f * t + (math.pi / 2))}
+
+    def jumbled_quadrature(self, t, f, a):
+        # What it does: Applies phase shifts in a non-sequential order.
+        # What it tests: Power supply resilience against non-rhythmic torque spikes.
+        return {"roll": a * math.sin(2 * math.pi * f * t), "pitch": a * math.sin(2 * math.pi * f * t + math.pi)}
+
+    def cross_axis_opposition(self, t, f, a):
+        # What it does: Syncs roll and pitch in opposite directions.
+        # What it tests: Maximum structural stress on the central chassis spine.
+        val = a * math.sin(2 * math.pi * f * t)
+        return {"roll": val, "pitch": -val}
+
+    def random_phase_noise(self, t, f, a):
+        # What it does: Assigns unique non-repeating offsets to all axes.
+        # What it tests: Control logic robustness under chaotic/non-symmetrical command streams.
+        return {"roll": a * math.sin(2 * math.pi * f * t + 0.1), "pitch": a * math.sin(2 * math.pi * f * t + 2.3)}
+
+    def butterfly_pitch_roll(self, t, f, a):
+        # What it does: Mirrored complex oscillation across flippers.
+        # What it tests: Mapping logic and CPU load during 3D transformations.
+        val = a * math.sin(2 * math.pi * f * t)
+        return {"roll": -val, "pitch": val}
+
+    def left_pitch_square(self, t, f, a):
+        # What it does: Instantaneous jumps between positive and negative pitch amplitude.
+        # What it tests: PID settling time, overshoot, and pitch motor responsiveness.
+        val = a if (int(2 * f * t) % 2 == 0) else -a
+        return {"roll": 0.0, "pitch": val}
+
+    def right_pitch_square(self, t, f, a):
+        # What it does: Instantaneous jumps between positive and negative pitch amplitude.
+        # What it tests: Pitch axis response parity.
+        val = a if (int(2 * f * t) % 2 == 0) else -a
+        return {"roll": 0.0, "pitch": val}
+
+    def left_roll_square(self, t, f, a):
+        # What it does: Instantaneous jumps between roll extremes.
+        # What it tests: High-torque roll 'snap' and motor gear backlash.
+        val = a if (int(2 * f * t) % 2 == 0) else -a
+        return {"roll": val, "pitch": 0.0}
+
+    def right_roll_square(self, t, f, a):
+        # What it does: Instantaneous jumps between roll extremes.
+        # What it tests: Roll axis response and backlash parity.
+        val = a if (int(2 * f * t) % 2 == 0) else -a
+        return {"roll": val, "pitch": 0.0}
+
+    def symmetric_roll_square(self, t, f, a):
+        # What it does: Simultaneous roll jumps on both sides.
+        # What it tests: Peak current spike handling of the roll power rail.
+        val = a if (int(2 * f * t) % 2 == 0) else -a
+        return {"roll": val, "pitch": 0.0}
+
+    def cross_axis_square_a(self, t, f, a):
+        # What it does: Simultaneous snaps on different axis types (Roll and Pitch).
+        # What it tests: Rail stability when mixed motors draw peak current.
+        val = a if (int(2 * f * t) % 2 == 0) else -a
+        return {"roll": val, "pitch": val}
+
+    def cross_axis_square_b(self, t, f, a):
+        # What it does: Opposing snaps on mixed axis types.
+        # What it tests: Oppositional shock loading and voltage sag.
+        val = a if (int(2 * f * t) % 2 == 0) else -a
+        return {"roll": -val, "pitch": val}
+
+    def all_axis_jumbled_square(self, t, f, a):
+        # What it does: Jumps all motors into a star configuration extremes.
+        # What it tests: Total bus bandwidth and maximum distributed torque.
+        val = a if (int(2 * f * t) % 2 == 0) else -a
+        return {"roll": val, "pitch": -val}
+
+    def global_step_response(self, t, f, a):
+        # What it does: Forces all servos to jump the full amplitude gap simultaneously.
+        # What it tests: Absolute peak power draw and Back-EMF spike tolerance.
+        val = a if (int(2 * f * t) % 2 == 0) else -a
+        return {"roll": val, "pitch": val}
+
+    def dual_power_stroke(self, t, f, a):
+        # What it does: Uses a cubed sine wave for rapid acceleration at the stroke peaks.
+        # What it tests: Instantaneous torque delivery and 'snap' propulsion efficiency.
+        val = a * (math.sin(2 * math.pi * f * t) ** 3)
+        return {"roll": 0.0, "pitch": val}
+
+    def static_load_offset(self, t, f, a):
+        # What it does: Holds all motors at a constant, non-zero offset.
+        # What it tests: Steady-state current draw, motor thermals, and mechanical deflection.
+        return {"roll": a, "pitch": a}
+
+    def chirp_test(self, t, f, a):
+        # What it does: Linearly increases frequency from 0.1Hz up to 'f' over the command duration.
+        # What it tests: Mechanical resonance frequencies and control loop bandwidth limits.
+        f_t = 0.1 + (f - 0.1) * (t / self.total_duration)
+        return {"roll": a * math.sin(2 * math.pi * f_t * t), "pitch": 0.0}
+
+    def hysteresis_test(self, t, f, a):
+        # What it does: Holds a static offset for 1 second, then oscillates starting from that peak.
+        # What it tests: Mechanical backlash (slop) and PID recovery from a pre-loaded directional bias.
+        offset = a 
+        if t < 1.0:
+            return {"roll": offset, "pitch": offset}
+        theta = 2 * math.pi * f * (t - 1.0)
+        return {"roll": a * math.cos(theta), "pitch": a * math.cos(theta)}
     def destroy_node(self):
         """Safe shutdown: releases torque and zeroes goal states."""
         self.get_logger().info("Shutting down: Releasing torque...")
