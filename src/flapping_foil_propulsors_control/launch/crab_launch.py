@@ -24,8 +24,8 @@ def generate_launch_description():
                 'kp': 0.0,
                 'ki': 0.0,
                 'kd': 0.0,
-                'control_period': 0.002,    
-                'telemetry_period': 0.004    
+                'control_period': 0.0025,    
+                'telemetry_period': 0.04    
             }]
         ),
         
@@ -36,8 +36,8 @@ def generate_launch_description():
             name='servo_actuator',
             output='screen',
             parameters=[{
-                'baudrate': 9600,
-                'control_loop_rate': 0.001,
+                'baudrate': 1000000,
+                'control_loop_rate': 0.002,
                 'current_limit': 800
             }]
         )

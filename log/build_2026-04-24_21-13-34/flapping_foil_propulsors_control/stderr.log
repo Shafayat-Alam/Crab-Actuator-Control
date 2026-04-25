@@ -1,0 +1,5 @@
+  File "/home/shafa/flapping-propulsors-control/install/flapping_foil_propulsors_control/lib/python3.12/site-packages/flapping_foil_propulsors_control/crab.py", line 38
+    """Captures frames and dynamically initializes the writer."""
+       ^^^^^^^^
+SyntaxError: invalid syntax
+

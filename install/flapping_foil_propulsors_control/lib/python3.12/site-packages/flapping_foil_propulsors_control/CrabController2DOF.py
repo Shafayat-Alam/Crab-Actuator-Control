@@ -94,7 +94,7 @@ class CrabController2DOF(Node):
         
         # Deterministic timing loops
         self.control_timer = self.create_timer(0.0025, self.update_motion_loop) #400Hz
-        self.telemetry_timer = self.create_timer(0.025, self.publish_telemetry) 
+        self.telemetry_timer = self.create_timer(0.04, self.publish_telemetry) 
 
     def broadcast_drive_cmd(self, ids, modes, values):
         """Helper to format and dispatch raw motor commands to the hardware interface."""
@@ -412,6 +412,7 @@ class CrabController2DOF(Node):
             return {"roll": offset, "pitch": offset}
         theta = 2 * math.pi * f * (t - 1.0)
         return {"roll": a * math.cos(theta), "pitch": a * math.cos(theta)}
+
     def destroy_node(self):
         """Safe shutdown: releases torque and zeroes goal states."""
         self.get_logger().info("Shutting down: Releasing torque...")

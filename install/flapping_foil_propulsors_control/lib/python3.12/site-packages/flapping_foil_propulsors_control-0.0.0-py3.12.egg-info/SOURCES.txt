@@ -8,7 +8,6 @@ setup.py
 ../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info/requires.txt
 ../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info/top_level.txt
 ../../build/flapping_foil_propulsors_control/flapping_foil_propulsors_control.egg-info/zip-safe
-flapping_foil_propulsors_control/CrabController2DOF.py
 flapping_foil_propulsors_control/Dynamixcel_XW430_T200_interface.py
 flapping_foil_propulsors_control/__init__.py
 flapping_foil_propulsors_control/crab.py

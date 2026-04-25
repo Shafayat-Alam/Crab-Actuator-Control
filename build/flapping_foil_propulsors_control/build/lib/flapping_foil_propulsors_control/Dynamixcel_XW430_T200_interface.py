@@ -14,6 +14,9 @@ class Dynamixel_XW430_T200_interface(Node):
     def __init__(self):
         super().__init__('servo_actuator')
         
+        self.is_configured = False # Ensure this is False at start
+        self.current_baudrate = -1  # Force a mismatch on the first loop
+
         # --- Declare Parameters ---
         # Default assigned to 9600 as requested
         self.declare_parameter('baudrate', 9600) 
