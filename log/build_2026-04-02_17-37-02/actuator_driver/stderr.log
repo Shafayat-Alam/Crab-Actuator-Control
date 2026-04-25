@@ -1,5 +1,0 @@
-  File "/home/shafa/flapping-propulsors-control/install/actuator_driver/lib/python3.12/site-packages/actuator_driver/crab_controller.py", line 107
-    """Zero out the actuator."""
-       ^^^^
-SyntaxError: invalid syntax
-

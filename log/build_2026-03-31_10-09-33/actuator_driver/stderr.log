@@ -1,5 +1,0 @@
-  File "/home/shafa/flapping-propulsors-control/install/actuator_driver/lib/python3.12/site-packages/actuator_driver/crab_controller.py", line 134
-    """Resets servos to exactly the 1024.0 home and kills the timer."""
-       ^^^^^^
-SyntaxError: invalid syntax
-

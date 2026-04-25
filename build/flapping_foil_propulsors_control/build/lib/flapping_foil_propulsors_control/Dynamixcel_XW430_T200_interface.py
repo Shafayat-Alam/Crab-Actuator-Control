@@ -138,59 +138,58 @@ class Dynamixel_XW430_T200_interface(Node):
     def setup_sync_io(self, ids, modes, requested_baud):
         self.is_configuring = True
         self.get_logger().info(f"Dynamically configuring IDs {ids} to {requested_baud} bps")
-        
-        # --- Complete Baudrate Mapping from Documentation ---
-        # 0: 9600, 1: 57600, 2: 115200, 3: 1M, 4: 2M, 5: 3M, 6: 4M, 7: 4.5M
-        BAUD_MAP = {
-            9600: 0,
-            57600: 1,
-            115200: 2,
-            1000000: 3,
-            2000000: 4,
-            3000000: 5,
-            4000000: 6,
-            4500000: 7
-        }
-        
-        # Default to 9600 index (0) if requested baudrate is not in the map
-        new_baud_reg = BAUD_MAP.get(requested_baud, 0)
-        limit = self.get_parameter('current_limit').value
+    
+    # --- Complete Baudrate Mapping from Documentation ---
+    BAUD_MAP = {
+        9600: 0, 57600: 1, 115200: 2, 1000000: 3,
+        2000000: 4, 3000000: 5, 4000000: 6, 4500000: 7
+    }
+    
+    new_baud_reg = BAUD_MAP.get(requested_baud, 0)
+    limit = self.get_parameter('current_limit').value
 
+    # Step 1: Handle baudrate change FIRST (if needed)
+    if requested_baud != self.current_baudrate:
         for sid in ids:
-            # Torque must be OFF to change baudrate or operating mode
+            # Torque OFF to change baudrate
             self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 0)
             time.sleep(0.01)
-            
-            # Step 1: Tell the servo to change its internal baudrate
-            if requested_baud != self.current_baudrate:
-                self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_BAUD_RATE, new_baud_reg)
-            
-            # Step 2: Set current limits and operating modes
-            idx = ids.index(sid)
-            self.packet_handler.write2ByteTxRx(self.port, sid, self.ADDR_CURRENT_LIMIT, limit)
-            self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_MODE, int(modes[idx]))
-            self.id_modes[sid] = modes[idx]
-
-        # Step 3: Match the Jetson/U2D2 Port Baudrate to the new servo speed
-        if requested_baud != self.current_baudrate:
-            if self.port.setBaudRate(requested_baud):
-                self.current_baudrate = requested_baud
-                self.get_logger().info(f"U2D2 Port Baudrate updated to {requested_baud}")
-
-        # Re-initialize Sync Handlers for the specific ID set
-        self.active_ids = ids
-        self.pos_sync = GroupSyncWrite(self.port, self.packet_handler, self.ADDR_GOAL_POS, 4)
-        self.vel_sync = GroupSyncWrite(self.port, self.packet_handler, self.ADDR_GOAL_VEL, 4)
-        self.feedback_read_sync = GroupSyncRead(self.port, self.packet_handler, self.ADDR_PRESENT_DATA, 20)
+            # Tell servo to change its baudrate
+            self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_BAUD_RATE, new_baud_reg)
+            time.sleep(0.01)
         
-        # Step 4: Re-enable Torque and add read parameters
-        for sid in ids:
-            self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 1)
-            self.feedback_read_sync.addParam(sid)
+        # NOW match the U2D2 port to the new servo speed
+        if self.port.setBaudRate(requested_baud):
+            self.current_baudrate = requested_baud
+            self.get_logger().info(f"U2D2 Port Baudrate updated to {requested_baud}")
+            time.sleep(0.1)  # Let the port stabilize
 
-        self.is_configured = True
-        self.is_configuring = False
-        self.get_logger().info("Hardware configuration sequence finished.")
+    # Step 2: Configure modes and limits (now at correct baudrate)
+    for sid in ids:
+        idx = ids.index(sid)
+        # Torque OFF (in case we skipped baudrate change)
+        self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 0)
+        time.sleep(0.01)
+        
+        # Set current limit and operating mode
+        self.packet_handler.write2ByteTxRx(self.port, sid, self.ADDR_CURRENT_LIMIT, limit)
+        self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_MODE, int(modes[idx]))
+        self.id_modes[sid] = int(modes[idx])
+
+    # Step 3: Re-initialize Sync Handlers
+    self.active_ids = ids
+    self.pos_sync = GroupSyncWrite(self.port, self.packet_handler, self.ADDR_GOAL_POS, 4)
+    self.vel_sync = GroupSyncWrite(self.port, self.packet_handler, self.ADDR_GOAL_VEL, 4)
+    self.feedback_read_sync = GroupSyncRead(self.port, self.packet_handler, self.ADDR_PRESENT_DATA, 20)
+    
+    # Step 4: Enable torque and add read parameters
+    for sid in ids:
+        self.packet_handler.write1ByteTxRx(self.port, sid, self.ADDR_TORQUE, 1)
+        self.feedback_read_sync.addParam(sid)
+
+    self.is_configured = True
+    self.is_configuring = False
+    self.get_logger().info("Hardware configuration sequence finished.")
 
     def destroy_node(self):
         for sid in self.active_ids:
