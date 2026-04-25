@@ -51,7 +51,7 @@ class CrabController2DOF(Node):
         # --- Hardware Mapping & Calibration ---
         # Servo IDs and zero-offsets
         self.actuators = {
-            "left":  {"roll": {"id": 1.0, "offset": 3.60}, "pitch": {"id": 2.0, "offset": 3.30}},
+            "left":  {"roll": {"id": 1.0, "offset": 3.60}, "pitch": {"id": 2.0, "offset": 2.70}},
             "right": {"roll": {"id": 3.0, "offset": 3.00}, "pitch": {"id": 4.0, "offset": 3.42}}
         }
 

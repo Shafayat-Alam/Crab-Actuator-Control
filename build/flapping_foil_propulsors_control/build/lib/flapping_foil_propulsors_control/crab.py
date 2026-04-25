@@ -2,11 +2,12 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Float32MultiArray
 from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
+from cv_bridge import CvBridge, CvBridgeError
 import cv2
 import os
 from collections import deque
 import time
+import numpy as np
 
 class Crab(Node):
     def __init__(self):
@@ -19,72 +20,128 @@ class Crab(Node):
         # --- Camera & Recording Setup ---
         self.bridge = CvBridge()
         self.video_writer = None
-        self.save_directory = os.path.expanduser('~/flapping-propulsors-control/videos/')
+        self.save_directory = os.path.expanduser('~/Desktop/flipper_code/flapping-foil-propulsors-control/videos/')
         os.makedirs(self.save_directory, exist_ok=True)
         
         self.current_cmd_duration = 0.0
         self.current_cmd_start_time = 0.0
-        self.current_video_path = None  # Track current video file
-        self.frame_count = 0  # Debug frame counting
+        self.current_video_path = None
+        self.frame_count = 0
+        self.last_error_time = 0
+        self.error_cooldown = 5.0  # Seconds between error logs
 
         # --- ROS2 Interfaces ---
         self.motion_pub = self.create_publisher(String, 'motion_cmd', 10)
         self.cmd_sub = self.create_subscription(String, 'robot_cmd', self.manual_cmd_cb, 10)
         self.tele_sub = self.create_subscription(Float32MultiArray, 'telemetry', self.telemetry_cb, 10)
-        self.cam_sub = self.create_subscription(Image, '/camera/image_raw', self.camera_cb, 10)
+        self.cam_sub = self.create_subscription(Image, '/image_raw', self.camera_cb, 10)
         
-        self.get_logger().info(f"Gatekeeper Online. Path: {self.save_directory}")
+        self.get_logger().info(f"Gatekeeper Online. Saving videos to: {self.save_directory}")
+
+    def safe_convert_image(self, msg):
+        """Safely convert ROS Image message to OpenCV image."""
+        try:
+            # Print encoding for debugging (once)
+            if not hasattr(self, '_encoding_logged'):
+                self.get_logger().info(f"Image encoding: {msg.encoding}")
+                self._encoding_logged = True
+            
+            # Handle different encodings
+            if msg.encoding in ['yuv422_yuy2', 'yuv422']:
+                return self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            elif msg.encoding == 'mjpeg':
+                # For MJPG, we need to decode the JPEG data
+                import cv2
+                import numpy as np
+                # Convert to numpy array and decode
+                np_arr = np.frombuffer(msg.data, np.uint8)
+                img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                if img is None:
+                    raise ValueError("Failed to decode MJPG image")
+                return img
+            elif msg.encoding == 'rgb8':
+                return self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            else:
+                # Try default conversion
+                return self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+                
+        except CvBridgeError as e:
+            current_time = time.time()
+            if current_time - self.last_error_time > self.error_cooldown:
+                self.get_logger().error(f"CvBridge Error: {e}")
+                self.last_error_time = current_time
+            return None
+        except Exception as e:
+            current_time = time.time()
+            if current_time - self.last_error_time > self.error_cooldown:
+                self.get_logger().error(f"Image conversion error: {e}")
+                self.last_error_time = current_time
+            return None
 
     def camera_cb(self, msg):
         """Captures frames and dynamically initializes the writer."""
-        if self.state == "ACTIVE":
-            try:
-                cv_img = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        if self.state != "ACTIVE":
+            return
+            
+        cv_img = self.safe_convert_image(msg)
+        if cv_img is None:
+            return
+        
+        try:
+            # Dynamic Initialization
+            if self.video_writer is None:
+                h, w = cv_img.shape[:2]
                 
-                # Dynamic Initialization: Matches the real camera resolution
-                if self.video_writer is None:
-                    h, w = cv_img.shape[:2]
-                    self.current_video_path = os.path.join(
-                        self.save_directory, 
-                        f"cmd_{self.command_count}.mp4"
-                    )
-                    
-                    # Try H264 first (better compatibility), fallback to mp4v
-                    fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264
+                # Create filename with timestamp
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                self.current_video_path = os.path.join(
+                    self.save_directory, 
+                    f"cmd_{self.command_count}_{timestamp}.avi"  # Use AVI for better compatibility
+                )
+                
+                # Use MJPG codec inside AVI container
+                fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+                self.video_writer = cv2.VideoWriter(
+                    self.current_video_path, fourcc, 30.0, (w, h)
+                )
+                
+                if not self.video_writer.isOpened():
+                    # Fallback to raw AVI
+                    fourcc = cv2.VideoWriter_fourcc(*'XVID')
                     self.video_writer = cv2.VideoWriter(
                         self.current_video_path, fourcc, 30.0, (w, h)
                     )
-                    
-                    # Verify writer opened successfully
-                    if not self.video_writer.isOpened():
-                        self.get_logger().warn("H264 failed, trying mp4v")
-                        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                        self.video_writer = cv2.VideoWriter(
-                            self.current_video_path, fourcc, 30.0, (w, h)
-                        )
-                    
-                    self.frame_count = 0
-                    self.get_logger().info(
-                        f"RECORDING START: {self.current_video_path} at {w}x{h}"
-                    )
+                
+                self.frame_count = 0
+                self.get_logger().info(
+                    f"RECORDING START: {self.current_video_path} at {w}x{h}"
+                )
 
-                if self.video_writer is not None and self.video_writer.isOpened():
-                    self.video_writer.write(cv_img)
-                    self.frame_count += 1
-                else:
-                    self.get_logger().error("VideoWriter not properly opened!")
-                    
-            except Exception as e:
+            if self.video_writer and self.video_writer.isOpened():
+                self.video_writer.write(cv_img)
+                self.frame_count += 1
+                
+        except Exception as e:
+            current_time = time.time()
+            if current_time - self.last_error_time > self.error_cooldown:
                 self.get_logger().error(f"Video Write Error: {e}")
+                self.last_error_time = current_time
 
     def finalize_video(self):
         """Properly close and flush the video file."""
         if self.video_writer is not None:
             self.video_writer.release()
-            self.get_logger().info(
-                f"Finalized video for Cmd #{self.command_count} "
-                f"({self.frame_count} frames written to {self.current_video_path})"
-            )
+            if self.frame_count > 0:
+                self.get_logger().info(
+                    f"Finalized video for Cmd #{self.command_count} "
+                    f"({self.frame_count} frames written to {self.current_video_path})"
+                )
+            else:
+                self.get_logger().warn(f"No frames recorded for Cmd #{self.command_count}")
+                # Delete empty video file
+                if self.current_video_path and os.path.exists(self.current_video_path):
+                    os.remove(self.current_video_path)
+            
             self.video_writer = None
             self.current_video_path = None
             self.frame_count = 0
@@ -127,7 +184,7 @@ class Crab(Node):
 
     def telemetry_cb(self, msg):
         if self.state == "ACTIVE":
-            if msg.data[0] == float(self.command_count):
+            if len(msg.data) > 0 and msg.data[0] == float(self.command_count):
                 elapsed = time.time() - self.current_cmd_start_time
                 if elapsed > (self.current_cmd_duration + 0.1):
                     self.process_next_command()
