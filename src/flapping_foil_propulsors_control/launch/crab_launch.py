@@ -85,4 +85,37 @@ def generate_launch_description():
             }],
         ),
 
+        # ------------------------------------------------------------------
+        # ICM20948 9-DOF IMU (Accelerometer + Gyroscope + Magnetometer)
+        # ------------------------------------------------------------------
+        Node(
+            package=PACKAGE,
+            executable='icm20948_interface',
+            name='icm20948_imu',
+            output='screen',
+            parameters=[{
+                'i2c_address': 0x69,      # Default I2C address
+                'sample_rate': 100.0,     # Hz - IMU sampling rate
+                'frame_id': 'imu_link',   # TF frame name
+            }],
+        ),
+
+        # ------------------------------------------------------------------
+        # StellarHD Camera (Command-Synchronized Video Recording)
+        # ------------------------------------------------------------------
+        Node(
+            package=PACKAGE,
+            executable='stellarhd_interface',
+            name='stellarhd_camera',
+            output='screen',
+            parameters=[{
+                'camera_index': 0,                           # /dev/video0
+                'video_width': 1920,                         # Resolution
+                'video_height': 1080,
+                'fps': 30.0,                                 # Frames per second
+                'output_directory': '/home/shafa/videos',    # Video save location
+                'fourcc': 'mp4v',                            # Codec: 'mp4v', 'XVID', 'H264'
+            }],
+        ),
+
     ])
